@@ -97,20 +97,46 @@ fun listMarkdownInTree(context: Context, treeUri: Uri): List<Pair<Uri, String>> 
 }
 
 class MainActivity : ComponentActivity() {
+    private val pendingOpenUri = mutableStateOf<Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Só na primeira criação (evita reabrir o arquivo ao girar a tela).
+        if (savedInstanceState == null) pendingOpenUri.value = extractUri(intent)
         setContent {
             MarkEditorTheme {
-                MarkEditorApp()
+                MarkEditorApp(
+                    pendingOpenUri = pendingOpenUri.value,
+                    onPendingOpenConsumed = { pendingOpenUri.value = null }
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractUri(intent)?.let { pendingOpenUri.value = it }
+    }
+
+    /** Extrai o Uri de um intent de VIEW/EDIT/SEND, se houver. */
+    private fun extractUri(intent: Intent?): Uri? {
+        intent ?: return null
+        return when (intent.action) {
+            Intent.ACTION_VIEW, Intent.ACTION_EDIT -> intent.data
+            Intent.ACTION_SEND -> intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            else -> null
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MarkEditorApp() {
+fun MarkEditorApp(
+    pendingOpenUri: Uri? = null,
+    onPendingOpenConsumed: () -> Unit = {}
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -279,6 +305,13 @@ fun MarkEditorApp() {
 
     val openFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { openDocumentUri(it) }
+    }
+
+    // Abre um arquivo recebido do sistema (Abrir com / compartilhar .md).
+    LaunchedEffect(pendingOpenUri) {
+        val uri = pendingOpenUri ?: return@LaunchedEffect
+        openDocumentUri(uri)
+        onPendingOpenConsumed()
     }
 
     val openTreeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
@@ -701,9 +734,9 @@ fun MarkEditorApp() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // 1. Botões FIXOS (Undo / Redo)
-                        ToolBarIconButton(Icons.Default.Undo, onClick = { currentDoc.undoRedoManager.undo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canUndo, tint = if (currentDoc.undoRedoManager.canUndo) gruvboxText else gruvboxGray)
+                        ToolBarIconButton(Icons.Default.Undo, onClick = { currentDoc.undoRedoManager.undo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canUndo, tint = if (currentDoc.undoRedoManager.canUndo) gruvboxText else gruvboxGray, label = "Desfazer")
                         Spacer(modifier = Modifier.width(4.dp))
-                        ToolBarIconButton(Icons.Default.Redo, onClick = { currentDoc.undoRedoManager.redo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canRedo, tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray)
+                        ToolBarIconButton(Icons.Default.Redo, onClick = { currentDoc.undoRedoManager.redo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canRedo, tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray, label = "Refazer")
 
                         Spacer(modifier = Modifier.width(8.dp))
 
@@ -718,33 +751,34 @@ fun MarkEditorApp() {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f) // A mágica que faz rolar apenas aqui dentro
                         ) {
-                            item { ToolBarButton("H1", onClick = { applyBlockTag("# ") }) }
-                            item { ToolBarButton("H2", onClick = { applyBlockTag("## ") }) }
-                            item { ToolBarButton("H3", onClick = { applyBlockTag("### ") }) }
-                            item { ToolBarIconButton(Icons.Default.FormatBold, onClick = { applyInlineTag("**", "**") }) }
-                            item { ToolBarIconButton(Icons.Default.FormatItalic, onClick = { applyInlineTag("*", "*") }) }
-                            item { ToolBarIconButton(Icons.Default.FormatStrikethrough, onClick = { applyInlineTag("~~", "~~") }) }
-                            item { ToolBarIconButton(Icons.Default.FormatQuote, onClick = { applyBlockTag("> ") }) }
-                            item { ToolBarIconButton(Icons.Default.Code, onClick = { applyInlineTag("`", "`") }) }
-                            item { ToolBarIconButton(Icons.Default.FormatListBulleted, onClick = { applyBlockTag("- ") }) }
-                            item { ToolBarIconButton(Icons.Default.FormatListNumbered, onClick = { applyBlockTag("1. ") }) }
-                            item { ToolBarIconButton(Icons.Default.CheckBox, onClick = { applyBlockTag("- [ ] ") }) }
+                            item { ToolBarButton("H1", onClick = { applyBlockTag("# ") }, label = "Título 1") }
+                            item { ToolBarButton("H2", onClick = { applyBlockTag("## ") }, label = "Título 2") }
+                            item { ToolBarButton("H3", onClick = { applyBlockTag("### ") }, label = "Título 3") }
+                            item { ToolBarIconButton(Icons.Default.FormatBold, onClick = { applyInlineTag("**", "**") }, label = "Negrito") }
+                            item { ToolBarIconButton(Icons.Default.FormatItalic, onClick = { applyInlineTag("*", "*") }, label = "Itálico") }
+                            item { ToolBarIconButton(Icons.Default.FormatStrikethrough, onClick = { applyInlineTag("~~", "~~") }, label = "Tachado") }
+                            item { ToolBarIconButton(Icons.Default.FormatQuote, onClick = { applyBlockTag("> ") }, label = "Citação") }
+                            item { ToolBarIconButton(Icons.Default.Code, onClick = { applyInlineTag("`", "`") }, label = "Código") }
+                            item { ToolBarIconButton(Icons.Default.FormatListBulleted, onClick = { applyBlockTag("- ") }, label = "Lista") }
+                            item { ToolBarIconButton(Icons.Default.FormatListNumbered, onClick = { applyBlockTag("1. ") }, label = "Numerada") }
+                            item { ToolBarIconButton(Icons.Default.CheckBox, onClick = { applyBlockTag("- [ ] ") }, label = "Tarefa") }
                             item {
                                 ToolBarIconButton(Icons.Default.Link, onClick = {
                                     val sel = currentDoc.textState.selection
                                     linkText = currentDoc.textState.text.substring(sel.start, sel.end)
                                     linkUrl = ""
                                     showLinkDialog = true
-                                })
+                                }, label = "Link")
                             }
-                            item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }) }
-                            item { ToolBarButton("Mermaid", onClick = { insertAtCursor("\n```mermaid\ngraph TD\n    A[Início] --> B[Fim]\n```\n") }) }
-                            item { ToolBarButton("TeX", onClick = { insertAtCursor("\n${'$'}${'$'}\nE = mc^2\n${'$'}${'$'}\n") }) }
+                            item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }, label = "Linha") }
+                            item { ToolBarIconButton(Icons.Default.Comment, onClick = { insertAtCursor("<!-- comentário -->") }, label = "Comentário") }
+                            item { ToolBarButton("Mermaid", onClick = { insertAtCursor("\n```mermaid\ngraph TD\n    A[Início] --> B[Fim]\n```\n") }, label = "Diagrama") }
+                            item { ToolBarButton("TeX", onClick = { insertAtCursor("\n${'$'}${'$'}\nE = mc^2\n${'$'}${'$'}\n") }, label = "Fórmula") }
                             item {
                                 ToolBarIconButton(Icons.Default.VolumeUp, onClick = {
                                     readFromOffset = currentDoc.textState.selection.start
                                     isPreviewMode = true
-                                })
+                                }, label = "Ler daqui")
                             }
                         }
                     }
@@ -796,17 +830,33 @@ fun MarkEditorApp() {
     }
 }
 
-// Atualizei para aceitar as cores de habilitado/desabilitado do Undo e Redo
+// Botões com uma legenda pequena embaixo, para deixar claro o que cada um faz.
 @Composable
-fun ToolBarIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, enabled: Boolean = true, tint: Color = gruvboxText) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.background(if (enabled) Color(0xFF504945) else Color(0xFF3C3836), RoundedCornerShape(8.dp))) {
-        Icon(icon, contentDescription = null, tint = tint)
+fun ToolBarIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    tint: Color = gruvboxText,
+    label: String = ""
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.background(if (enabled) Color(0xFF504945) else Color(0xFF3C3836), RoundedCornerShape(8.dp))) {
+            Icon(icon, contentDescription = label.ifEmpty { null }, tint = tint)
+        }
+        if (label.isNotEmpty()) {
+            Text(label, fontSize = 9.sp, color = gruvboxGray, maxLines = 1)
+        }
     }
 }
 
 @Composable
-fun ToolBarButton(text: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.background(Color(0xFF504945), RoundedCornerShape(8.dp)), contentPadding = PaddingValues(horizontal = 12.dp)) {
-        Text(text, fontWeight = FontWeight.Bold, color = gruvboxText)
+fun ToolBarButton(text: String, onClick: () -> Unit, label: String = "") {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        TextButton(onClick = onClick, modifier = Modifier.background(Color(0xFF504945), RoundedCornerShape(8.dp)), contentPadding = PaddingValues(horizontal = 12.dp)) {
+            Text(text, fontWeight = FontWeight.Bold, color = gruvboxText)
+        }
+        if (label.isNotEmpty()) {
+            Text(label, fontSize = 9.sp, color = gruvboxGray, maxLines = 1)
+        }
     }
 }

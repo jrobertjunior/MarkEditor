@@ -80,6 +80,10 @@ fun toggleTaskLine(block: String, lineIndex: Int): String {
     return lines.joinToString("\n")
 }
 
+/** Remove comentários HTML (<!-- ... -->) do markdown, para não renderizar/ler. */
+fun removeComments(md: String): String =
+    md.replace(Regex("(?s)<!--.*?-->"), "")
+
 /** Conta palavras (sequências de caracteres não-espaço). */
 fun countWords(text: String): Int =
     if (text.isBlank()) 0 else Regex("\\S+").findAll(text).count()

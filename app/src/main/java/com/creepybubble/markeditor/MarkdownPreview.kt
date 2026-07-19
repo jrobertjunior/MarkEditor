@@ -628,7 +628,7 @@ private fun RenderedBlock(
             tv.textSize = fontSize
             tv.setTextColor(gruvboxText.toArgb())
             tv.setBackgroundColor(gruvboxSurface.toArgb())
-            markwon.setMarkdown(tv, source)
+            markwon.setMarkdown(tv, removeComments(source))
             applyWordHighlight(tv, highlight)
             tv.setOnClickListener { onClick() }
             tv.setOnLongClickListener { onLongClick(); true }

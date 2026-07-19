@@ -48,6 +48,9 @@ private val sampleByLanguage = mapOf(
 fun stripMarkdown(input: String): String {
     var s = input
 
+    // Comentários HTML: fora (não devem ser lidos).
+    s = s.replace(Regex("(?s)<!--.*?-->"), " ")
+
     // Blocos de código cercados: fora.
     s = s.replace(Regex("(?s)```.*?```"), " ")
 
