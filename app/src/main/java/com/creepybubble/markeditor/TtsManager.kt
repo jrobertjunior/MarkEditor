@@ -228,8 +228,10 @@ class TtsManager private constructor(context: Context) {
 
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
                 mainHandler.post {
-                    currentWordStart = start
-                    currentWordEnd = end
+                    // Corrige o deslocamento se este bloco começou no meio (retomada).
+                    val extra = if (currentIndex == firstUtteranceIndex) firstUtteranceOffset else 0
+                    currentWordStart = start + extra
+                    currentWordEnd = end + extra
                 }
             }
 
@@ -430,17 +432,28 @@ class TtsManager private constructor(context: Context) {
         mainHandler.postDelayed(r, minutes * 60_000L)
     }
 
-    private fun speakFrom(index: Int) {
+    // Quando retomamos no meio de um bloco, guardamos o deslocamento da 1ª fala
+    // para corrigir as posições reportadas em onRangeStart (destaque da palavra).
+    private var firstUtteranceIndex = -1
+    private var firstUtteranceOffset = 0
+
+    private fun speakFrom(index: Int, charOffset: Int = 0) {
         val engine = tts ?: return
         if (!ready || blocks.isEmpty()) return
 
         manualInterrupt = true
         engine.stop()
         lastIndex = -1
+        firstUtteranceIndex = index
+        firstUtteranceOffset = charOffset.coerceAtLeast(0)
         var firstQueued = true
 
         for (i in index.coerceAtLeast(0) until blocks.size) {
-            val clean = stripMarkdown(blocks[i])
+            var clean = stripMarkdown(blocks[i])
+            // No primeiro bloco, começa do deslocamento pedido (retomar do ponto exato).
+            if (i == index && charOffset > 0) {
+                clean = if (charOffset < clean.length) clean.substring(charOffset) else ""
+            }
             if (clean.isNotBlank()) {
                 val mode = if (firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
                 engine.speak(clean, mode, null, i.toString())
@@ -467,7 +480,10 @@ class TtsManager private constructor(context: Context) {
     }
 
     fun resume() {
-        speakFrom(if (currentIndex >= 0) currentIndex else 0)
+        val idx = if (currentIndex >= 0) currentIndex else 0
+        // Retoma da palavra onde parou, não do início do bloco.
+        val offset = if (currentWordStart > 0) currentWordStart else 0
+        speakFrom(idx, offset)
     }
 
     fun next() {

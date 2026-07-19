@@ -659,7 +659,7 @@ fun MarkEditorApp() {
                 }
             }
         ) { innerPadding ->
-            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).background(gruvboxBg)) {
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).imePadding().background(gruvboxBg)) {
                 val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
                 val previewPane: @Composable () -> Unit = {
