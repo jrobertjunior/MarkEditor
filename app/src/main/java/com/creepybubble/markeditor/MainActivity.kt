@@ -155,6 +155,10 @@ fun MarkEditorApp() {
     // Offset do cursor a partir do qual iniciar a leitura ao entrar no preview.
     var readFromOffset by remember { mutableStateOf<Int?>(null) }
 
+    val appPrefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+    var autoSaveEnabled by remember { mutableStateOf(appPrefs.getBoolean("autosave", true)) }
+    var showExportMenu by remember { mutableStateOf(false) }
+
     val tocItems = remember(currentDoc.textState.text) { extractToc(currentDoc.textState.text) }
 
     val updateTextState = { newState: TextFieldValue ->
@@ -225,6 +229,37 @@ fun MarkEditorApp() {
             if (saveFile(it, currentDoc.textState.text)) currentDoc.savedText = currentDoc.textState.text
             currentDoc.uri = it
             currentDoc.name = getFileName(context, it)
+        }
+    }
+
+    val exportHtmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.openOutputStream(it)?.use { os ->
+                    os.write(renderFullHtml(currentDoc.name, currentDoc.textState.text).toByteArray())
+                }
+            } catch (e: Exception) { /* ignora falha de exportação */ }
+        }
+    }
+
+    val exportPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.openOutputStream(it)?.use { os ->
+                    writePdf(context, currentDoc.textState.text, os)
+                }
+            } catch (e: Exception) { /* ignora falha de exportação */ }
+        }
+    }
+
+    // Auto-save: grava no arquivo (se houver) pouco depois de parar de digitar.
+    LaunchedEffect(currentDoc.textState.text, currentDoc.uri, autoSaveEnabled) {
+        if (!autoSaveEnabled) return@LaunchedEffect
+        val uri = currentDoc.uri ?: return@LaunchedEffect
+        if (currentDoc.textState.text == currentDoc.savedText) return@LaunchedEffect
+        delay(2000)
+        if (autoSaveEnabled && currentDoc.uri == uri && currentDoc.textState.text != currentDoc.savedText) {
+            if (saveFile(uri, currentDoc.textState.text)) currentDoc.savedText = currentDoc.textState.text
         }
     }
 
@@ -355,6 +390,46 @@ fun MarkEditorApp() {
                         }
 
                         IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, "Alternar", tint = gruvboxText) }
+
+                        Box {
+                            IconButton(onClick = { showExportMenu = true }) {
+                                Icon(Icons.Default.MoreVert, "Mais opções", tint = gruvboxText)
+                            }
+                            DropdownMenu(
+                                expanded = showExportMenu,
+                                onDismissRequest = { showExportMenu = false },
+                                modifier = Modifier.background(gruvboxSurface)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Exportar HTML", color = gruvboxText) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        exportHtmlLauncher.launch(currentDoc.name.removeSuffix(".md") + ".html")
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Exportar PDF", color = gruvboxText) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        exportPdfLauncher.launch(currentDoc.name.removeSuffix(".md") + ".pdf")
+                                    }
+                                )
+                                HorizontalDivider(color = gruvboxBg)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (autoSaveEnabled) "Auto-salvar: ligado" else "Auto-salvar: desligado",
+                                            color = if (autoSaveEnabled) gruvboxOrange else gruvboxGray
+                                        )
+                                    },
+                                    onClick = {
+                                        autoSaveEnabled = !autoSaveEnabled
+                                        appPrefs.edit().putBoolean("autosave", autoSaveEnabled).apply()
+                                        showExportMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 )
             },
