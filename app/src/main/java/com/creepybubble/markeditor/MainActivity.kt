@@ -2,6 +2,7 @@ package com.creepybubble.markeditor
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -29,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
@@ -425,7 +427,9 @@ fun MarkEditorApp() {
             }
         ) { innerPadding ->
             Column(modifier = Modifier.fillMaxSize().padding(innerPadding).background(gruvboxBg)) {
-                if (isPreviewMode) {
+                val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+                val previewPane: @Composable () -> Unit = {
                     Surface(modifier = Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(12.dp), color = gruvboxSurface) {
                         // key() garante estado de scroll/seleção/leitura próprio para cada aba.
                         key(currentDoc.id) {
@@ -449,7 +453,10 @@ fun MarkEditorApp() {
                             )
                         }
                     }
-                } else {
+                }
+
+                val editorPane: @Composable () -> Unit = {
+                    Column(modifier = Modifier.fillMaxSize()) {
                     // Nova estrutura: Row fixa contendo a LazyRow rolável
                     Row(
                         modifier = Modifier
@@ -536,6 +543,16 @@ fun MarkEditorApp() {
                             fontSize = 12.sp
                         )
                     }
+                    }
+                }
+
+                if (landscape) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) { editorPane() }
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) { previewPane() }
+                    }
+                } else {
+                    if (isPreviewMode) previewPane() else editorPane()
                 }
             }
         }

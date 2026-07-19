@@ -6,6 +6,7 @@ import android.text.style.BackgroundColorSpan
 import android.widget.TextView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -215,8 +218,15 @@ fun MarkdownPreview(
         )
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f).padding(8.dp)) {
             itemsIndexed(blocks) { index, block ->
-                if (editingIndex == index) {
-                    BlockEditField(
+                // 1º toque seleciona; 2º toque no já selecionado abre a edição.
+                val onClick = {
+                    if (selectedBlockIndex == index) editingIndex = index
+                    else selectedBlockIndex = index
+                }
+                val onLongClick = { editingIndex = index }
+
+                when {
+                    editingIndex == index -> BlockEditField(
                         initial = block,
                         onCommit = { newText ->
                             if (index < blocks.size) blocks[index] = newText
@@ -224,28 +234,41 @@ fun MarkdownPreview(
                             if (editingIndex == index) editingIndex = null
                         }
                     )
-                } else {
-                    val highlight = if (index == tts.currentIndex && tts.currentWordStart >= 0) {
-                        WordHighlight(tts.spokenText(index), tts.currentWordStart, tts.currentWordEnd)
-                    } else {
-                        null
-                    }
-                    RenderedBlock(
-                        markwon = markwon,
+
+                    isCodeBlock(block) -> CodeBlock(
                         source = block,
-                        isReading = index == tts.currentIndex,
                         isSelected = index == selectedBlockIndex,
-                        highlight = highlight,
-                        onClick = {
-                            // 1º toque seleciona; 2º toque no já selecionado abre a edição.
-                            if (selectedBlockIndex == index) {
-                                editingIndex = index
-                            } else {
-                                selectedBlockIndex = index
-                            }
-                        },
-                        onLongClick = { editingIndex = index }
+                        onClick = onClick,
+                        onLongClick = onLongClick
                     )
+
+                    isTaskListBlock(block) -> TaskListBlock(
+                        source = block,
+                        isSelected = index == selectedBlockIndex,
+                        onToggle = { lineIndex ->
+                            val updated = toggleTaskLine(block, lineIndex)
+                            if (index < blocks.size) blocks[index] = updated
+                            onTextChange(blocks.joinToString("\n\n"))
+                        },
+                        onClick = onClick
+                    )
+
+                    else -> {
+                        val highlight = if (index == tts.currentIndex && tts.currentWordStart >= 0) {
+                            WordHighlight(tts.spokenText(index), tts.currentWordStart, tts.currentWordEnd)
+                        } else {
+                            null
+                        }
+                        RenderedBlock(
+                            markwon = markwon,
+                            source = block,
+                            isReading = index == tts.currentIndex,
+                            isSelected = index == selectedBlockIndex,
+                            highlight = highlight,
+                            onClick = onClick,
+                            onLongClick = onLongClick
+                        )
+                    }
                 }
             }
         }
@@ -383,6 +406,113 @@ private fun TtsButton(
             contentDescription = description,
             tint = if (enabled) tint else gruvboxGray
         )
+    }
+}
+
+@Composable
+private fun CodeBlock(
+    source: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val (lang, code) = remember(source) { parseCodeBlock(source) }
+    var boxModifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 2.dp)
+    if (isSelected) {
+        boxModifier = boxModifier.border(1.5.dp, gruvboxBlue, RoundedCornerShape(8.dp))
+    }
+
+    Column(modifier = boxModifier) {
+        if (lang.isNotBlank()) {
+            Text(
+                text = lang,
+                color = gruvboxGray,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(gruvboxBg)
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+            )
+        }
+        AndroidView(
+            modifier = Modifier.fillMaxWidth(),
+            factory = { ctx ->
+                TextView(ctx).apply {
+                    textSize = 14f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setTextColor(gruvboxText.toArgb())
+                    setBackgroundColor(gruvboxBg.toArgb())
+                    setPadding(16, 12, 16, 12)
+                    isClickable = true
+                    isFocusable = false
+                    isLongClickable = true
+                }
+            },
+            update = { tv ->
+                tv.text = highlightCode(code)
+                tv.setOnClickListener { onClick() }
+                tv.setOnLongClickListener { onLongClick(); true }
+            }
+        )
+    }
+}
+
+@Composable
+private fun TaskListBlock(
+    source: String,
+    isSelected: Boolean,
+    onToggle: (Int) -> Unit,
+    onClick: () -> Unit
+) {
+    val lines = remember(source) { source.split("\n") }
+    var columnModifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 2.dp)
+        .background(gruvboxSurface, RoundedCornerShape(8.dp))
+    if (isSelected) {
+        columnModifier = columnModifier.border(1.5.dp, gruvboxBlue, RoundedCornerShape(8.dp))
+    }
+
+    Column(modifier = columnModifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        lines.forEachIndexed { i, line ->
+            val task = taskLineRegex.matchEntire(line)
+            if (task != null) {
+                val checked = task.groupValues[3].lowercase() == "x"
+                val label = task.groupValues[4]
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = { onToggle(i) },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = gruvboxOrange,
+                            uncheckedColor = gruvboxGray,
+                            checkmarkColor = gruvboxBg
+                        )
+                    )
+                    Text(
+                        text = label,
+                        color = gruvboxText,
+                        fontSize = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onClick)
+                    )
+                }
+            } else if (line.isNotBlank()) {
+                Text(
+                    text = line,
+                    color = gruvboxText,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onClick)
+                        .padding(vertical = 4.dp)
+                )
+            }
+        }
     }
 }
 

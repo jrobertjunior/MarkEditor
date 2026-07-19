@@ -60,6 +60,26 @@ fun continueListOnNewline(old: TextFieldValue, new: TextFieldValue): TextFieldVa
     return TextFieldValue(text, TextRange(cursor + marker.length))
 }
 
+/** Regex de uma linha de tarefa: indentação, marcador, [ ]/[x] e conteúdo. */
+val taskLineRegex = Regex("^(\\s*)([-*+])\\s+\\[([ xX])]\\s+(.*)$")
+
+/** Um bloco é lista de tarefas se ao menos uma linha for um item de tarefa. */
+fun isTaskListBlock(block: String): Boolean =
+    block.split("\n").any { taskLineRegex.matches(it) }
+
+/** Alterna [ ] <-> [x] na linha [lineIndex] de um bloco e devolve o bloco novo. */
+fun toggleTaskLine(block: String, lineIndex: Int): String {
+    val lines = block.split("\n").toMutableList()
+    if (lineIndex !in lines.indices) return block
+    val line = lines[lineIndex]
+    lines[lineIndex] = if (Regex("\\[[xX]]").containsMatchIn(line)) {
+        line.replaceFirst(Regex("\\[[xX]]"), "[ ]")
+    } else {
+        line.replaceFirst("[ ]", "[x]")
+    }
+    return lines.joinToString("\n")
+}
+
 /** Conta palavras (sequências de caracteres não-espaço). */
 fun countWords(text: String): Int =
     if (text.isBlank()) 0 else Regex("\\S+").findAll(text).count()
