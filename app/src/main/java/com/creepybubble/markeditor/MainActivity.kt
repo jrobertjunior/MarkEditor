@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -145,6 +146,10 @@ fun MarkEditorApp() {
     var showRenameDialog by remember { mutableStateOf<Document?>(null) }
     var newFileName by remember { mutableStateOf("") }
 
+    var showLinkDialog by remember { mutableStateOf(false) }
+    var linkText by remember { mutableStateOf("") }
+    var linkUrl by remember { mutableStateOf("") }
+
     val tocItems = remember(currentDoc.textState.text) { extractToc(currentDoc.textState.text) }
 
     val updateTextState = { newState: TextFieldValue ->
@@ -168,6 +173,13 @@ fun MarkEditorApp() {
         val newText = text.substring(0, lineStart) + tagPrefix + text.substring(lineStart)
         val newCursorPos = cursor + tagPrefix.length
         updateTextState(TextFieldValue(text = newText, selection = TextRange(newCursorPos)))
+    }
+
+    val insertAtCursor = { snippet: String ->
+        val text = currentDoc.textState.text
+        val cursor = currentDoc.textState.selection.start
+        val newText = text.substring(0, cursor) + snippet + text.substring(cursor)
+        updateTextState(TextFieldValue(text = newText, selection = TextRange(cursor + snippet.length)))
     }
 
     val readFile = { uri: Uri -> context.contentResolver.openInputStream(uri)?.use { InputStreamReader(it).readText() } ?: "" }
@@ -205,7 +217,7 @@ fun MarkEditorApp() {
     val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
         uri?.let {
             persistUriPermission(it)
-            saveFile(it, currentDoc.textState.text)
+            if (saveFile(it, currentDoc.textState.text)) currentDoc.savedText = currentDoc.textState.text
             currentDoc.uri = it
             currentDoc.name = getFileName(context, it)
         }
@@ -238,6 +250,46 @@ fun MarkEditorApp() {
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = null }) { Text("Cancelar", color = gruvboxGray) }
+            }
+        )
+    }
+
+    if (showLinkDialog) {
+        val linkFieldColors = TextFieldDefaults.colors(
+            focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
+            focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
+            cursorColor = gruvboxOrange
+        )
+        AlertDialog(
+            onDismissRequest = { showLinkDialog = false },
+            title = { Text("Inserir link", color = gruvboxOrange) },
+            containerColor = gruvboxSurface,
+            text = {
+                Column {
+                    TextField(
+                        value = linkText, onValueChange = { linkText = it }, singleLine = true,
+                        label = { Text("Texto", color = gruvboxGray) }, colors = linkFieldColors
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextField(
+                        value = linkUrl, onValueChange = { linkUrl = it }, singleLine = true,
+                        label = { Text("URL", color = gruvboxGray) }, colors = linkFieldColors
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val sel = currentDoc.textState.selection
+                    val text = currentDoc.textState.text
+                    val label = linkText.ifBlank { "link" }
+                    val insert = "[$label]($linkUrl)"
+                    val newText = text.replaceRange(sel.start, sel.end, insert)
+                    updateTextState(TextFieldValue(newText, TextRange(sel.start + insert.length)))
+                    showLinkDialog = false
+                }) { Text("Inserir", color = gruvboxOrange) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLinkDialog = false }) { Text("Cancelar", color = gruvboxGray) }
             }
         )
     }
@@ -284,7 +336,9 @@ fun MarkEditorApp() {
 
                         IconButton(onClick = {
                             val uri = currentDoc.uri
-                            if (uri == null || !saveFile(uri, currentDoc.textState.text)) {
+                            if (uri != null && saveFile(uri, currentDoc.textState.text)) {
+                                currentDoc.savedText = currentDoc.textState.text
+                            } else {
                                 saveAsLauncher.launch(currentDoc.name)
                             }
                         }) {
@@ -324,6 +378,10 @@ fun MarkEditorApp() {
                             onClick = { selectedIndex = index },
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (doc.isDirty) {
+                                        Box(modifier = Modifier.size(7.dp).background(gruvboxYellow, CircleShape))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
                                     Text(
                                         text = doc.name,
                                         color = if (safeIndex == index) gruvboxOrange else gruvboxText,
@@ -418,14 +476,27 @@ fun MarkEditorApp() {
                             item { ToolBarButton("H3", onClick = { applyBlockTag("### ") }) }
                             item { ToolBarIconButton(Icons.Default.FormatBold, onClick = { applyInlineTag("**", "**") }) }
                             item { ToolBarIconButton(Icons.Default.FormatItalic, onClick = { applyInlineTag("*", "*") }) }
+                            item { ToolBarIconButton(Icons.Default.FormatStrikethrough, onClick = { applyInlineTag("~~", "~~") }) }
                             item { ToolBarIconButton(Icons.Default.FormatQuote, onClick = { applyBlockTag("> ") }) }
                             item { ToolBarIconButton(Icons.Default.Code, onClick = { applyInlineTag("`", "`") }) }
+                            item { ToolBarIconButton(Icons.Default.FormatListBulleted, onClick = { applyBlockTag("- ") }) }
+                            item { ToolBarIconButton(Icons.Default.FormatListNumbered, onClick = { applyBlockTag("1. ") }) }
+                            item { ToolBarIconButton(Icons.Default.CheckBox, onClick = { applyBlockTag("- [ ] ") }) }
+                            item {
+                                ToolBarIconButton(Icons.Default.Link, onClick = {
+                                    val sel = currentDoc.textState.selection
+                                    linkText = currentDoc.textState.text.substring(sel.start, sel.end)
+                                    linkUrl = ""
+                                    showLinkDialog = true
+                                })
+                            }
+                            item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }) }
                         }
                     }
 
                     TextField(
                         value = currentDoc.textState,
-                        onValueChange = { updateTextState(it) },
+                        onValueChange = { updateTextState(continueListOnNewline(currentDoc.textState, it)) },
                         visualTransformation = MarkdownGruvboxTransformation(),
                         modifier = Modifier.fillMaxWidth().weight(1f).padding(8.dp).clip(RoundedCornerShape(8.dp)).focusRequester(focusRequester),
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 16.sp),
@@ -435,6 +506,25 @@ fun MarkEditorApp() {
                             cursorColor = gruvboxText, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
                         )
                     )
+
+                    // Barra de status: contagem de palavras/caracteres e tempo de leitura.
+                    val wordCount = countWords(currentDoc.textState.text)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(gruvboxSurface)
+                            .padding(horizontal = 12.dp, vertical = 3.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Text(
+                            text = buildString {
+                                append("$wordCount palavras · ${currentDoc.textState.text.length} caract.")
+                                if (wordCount > 0) append(" · ~${readingMinutes(wordCount)} min")
+                            },
+                            color = gruvboxGray,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
         }

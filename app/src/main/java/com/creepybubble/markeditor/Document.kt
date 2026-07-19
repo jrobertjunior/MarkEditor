@@ -24,6 +24,10 @@ class Document(
     )
     val undoRedoManager = UndoRedoManager(textState)
 
+    // Texto da última gravação/abertura; se difere do atual, há mudanças não salvas.
+    var savedText by mutableStateOf(initialText)
+    val isDirty: Boolean get() = textState.text != savedText
+
     // Posição de rolagem do modo de exibição (para restaurar onde o usuário estava).
     var previewScrollIndex: Int = initialScrollIndex
     var previewScrollOffset: Int = initialScrollOffset
