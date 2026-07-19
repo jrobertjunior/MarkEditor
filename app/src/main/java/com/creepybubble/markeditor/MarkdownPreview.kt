@@ -96,6 +96,7 @@ fun MarkdownPreview(
     onScrollChanged: (Int, Int) -> Unit = { _, _ -> },
     startReadingFromOffset: Int? = null,
     onStartReadingConsumed: () -> Unit = {},
+    fontSize: Float = 16f,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -228,6 +229,7 @@ fun MarkdownPreview(
                 when {
                     editingIndex == index -> BlockEditField(
                         initial = block,
+                        fontSize = fontSize,
                         onCommit = { newText ->
                             if (index < blocks.size) blocks[index] = newText
                             onTextChange(blocks.joinToString("\n\n"))
@@ -238,6 +240,7 @@ fun MarkdownPreview(
                     isCodeBlock(block) -> CodeBlock(
                         source = block,
                         isSelected = index == selectedBlockIndex,
+                        fontSize = fontSize,
                         onClick = onClick,
                         onLongClick = onLongClick
                     )
@@ -245,6 +248,7 @@ fun MarkdownPreview(
                     isTaskListBlock(block) -> TaskListBlock(
                         source = block,
                         isSelected = index == selectedBlockIndex,
+                        fontSize = fontSize,
                         onToggle = { lineIndex ->
                             val updated = toggleTaskLine(block, lineIndex)
                             if (index < blocks.size) blocks[index] = updated
@@ -265,6 +269,7 @@ fun MarkdownPreview(
                             isReading = index == tts.currentIndex,
                             isSelected = index == selectedBlockIndex,
                             highlight = highlight,
+                            fontSize = fontSize,
                             onClick = onClick,
                             onLongClick = onLongClick
                         )
@@ -413,6 +418,7 @@ private fun TtsButton(
 private fun CodeBlock(
     source: String,
     isSelected: Boolean,
+    fontSize: Float,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -441,10 +447,7 @@ private fun CodeBlock(
             modifier = Modifier.fillMaxWidth(),
             factory = { ctx ->
                 TextView(ctx).apply {
-                    textSize = 14f
                     typeface = android.graphics.Typeface.MONOSPACE
-                    setTextColor(gruvboxText.toArgb())
-                    setBackgroundColor(gruvboxBg.toArgb())
                     setPadding(16, 12, 16, 12)
                     isClickable = true
                     isFocusable = false
@@ -452,6 +455,9 @@ private fun CodeBlock(
                 }
             },
             update = { tv ->
+                tv.textSize = fontSize - 2f
+                tv.setTextColor(gruvboxText.toArgb())
+                tv.setBackgroundColor(gruvboxBg.toArgb())
                 tv.text = highlightCode(code)
                 tv.setOnClickListener { onClick() }
                 tv.setOnLongClickListener { onLongClick(); true }
@@ -464,6 +470,7 @@ private fun CodeBlock(
 private fun TaskListBlock(
     source: String,
     isSelected: Boolean,
+    fontSize: Float,
     onToggle: (Int) -> Unit,
     onClick: () -> Unit
 ) {
@@ -495,7 +502,7 @@ private fun TaskListBlock(
                     Text(
                         text = label,
                         color = gruvboxText,
-                        fontSize = 16.sp,
+                        fontSize = fontSize.sp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable(onClick = onClick)
@@ -505,7 +512,7 @@ private fun TaskListBlock(
                 Text(
                     text = line,
                     color = gruvboxText,
-                    fontSize = 16.sp,
+                    fontSize = fontSize.sp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onClick)
@@ -523,6 +530,7 @@ private fun RenderedBlock(
     isReading: Boolean,
     isSelected: Boolean,
     highlight: WordHighlight?,
+    fontSize: Float,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -543,9 +551,6 @@ private fun RenderedBlock(
         modifier = boxModifier,
         factory = { ctx ->
             TextView(ctx).apply {
-                textSize = 16f
-                setTextColor(gruvboxText.toArgb())
-                setBackgroundColor(gruvboxSurface.toArgb())
                 setPadding(16, 8, 16, 8)
                 isClickable = true
                 isFocusable = false
@@ -553,6 +558,9 @@ private fun RenderedBlock(
             }
         },
         update = { tv ->
+            tv.textSize = fontSize
+            tv.setTextColor(gruvboxText.toArgb())
+            tv.setBackgroundColor(gruvboxSurface.toArgb())
             markwon.setMarkdown(tv, source)
             applyWordHighlight(tv, highlight)
             tv.setOnClickListener { onClick() }
@@ -594,7 +602,7 @@ private fun applyWordHighlight(tv: TextView, highlight: WordHighlight?) {
 }
 
 @Composable
-private fun BlockEditField(initial: String, onCommit: (String) -> Unit) {
+private fun BlockEditField(initial: String, fontSize: Float, onCommit: (String) -> Unit) {
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
@@ -611,7 +619,7 @@ private fun BlockEditField(initial: String, onCommit: (String) -> Unit) {
             value = value,
             onValueChange = { value = it },
             visualTransformation = MarkdownGruvboxTransformation(),
-            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 16.sp),
+            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = fontSize.sp),
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focusRequester)

@@ -159,6 +159,16 @@ fun MarkEditorApp() {
     var autoSaveEnabled by remember { mutableStateOf(appPrefs.getBoolean("autosave", true)) }
     var showExportMenu by remember { mutableStateOf(false) }
 
+    // Aplica o tema salvo uma única vez.
+    remember {
+        appPrefs.getString("palette", null)?.let { saved ->
+            appPalettes.firstOrNull { it.name == saved }?.let { applyPalette(it) }
+        }
+        true
+    }
+    var fontSize by remember { mutableStateOf(appPrefs.getFloat("fontsize", 16f)) }
+    var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
+
     val tocItems = remember(currentDoc.textState.text) { extractToc(currentDoc.textState.text) }
 
     val updateTextState = { newState: TextFieldValue ->
@@ -213,14 +223,18 @@ fun MarkEditorApp() {
         }
     }
 
+    val openDocumentUri = { uri: Uri ->
+        persistUriPermission(uri)
+        val fileName = getFileName(context, uri)
+        val content = readFile(uri)
+        documents.add(Document(name = fileName, uri = uri, initialText = content))
+        selectedIndex = documents.size - 1
+        RecentFiles.add(appPrefs, uri.toString(), fileName)
+        recents = RecentFiles.load(appPrefs)
+    }
+
     val openFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let {
-            persistUriPermission(it)
-            val fileName = getFileName(context, it)
-            val content = readFile(it)
-            documents.add(Document(name = fileName, uri = it, initialText = content))
-            selectedIndex = documents.size - 1
-        }
+        uri?.let { openDocumentUri(it) }
     }
 
     val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
@@ -229,6 +243,8 @@ fun MarkEditorApp() {
             if (saveFile(it, currentDoc.textState.text)) currentDoc.savedText = currentDoc.textState.text
             currentDoc.uri = it
             currentDoc.name = getFileName(context, it)
+            RecentFiles.add(appPrefs, it.toString(), currentDoc.name)
+            recents = RecentFiles.load(appPrefs)
         }
     }
 
@@ -343,7 +359,7 @@ fun MarkEditorApp() {
                 if (tocItems.isEmpty()) {
                     Text("Nenhum capítulo encontrado.", modifier = Modifier.padding(16.dp), color = gruvboxGray)
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
                         items(tocItems) { item ->
                             Box(modifier = Modifier.fillMaxWidth().clickable {
                                 updateTextState(currentDoc.textState.copy(selection = TextRange(item.index)))
@@ -351,6 +367,21 @@ fun MarkEditorApp() {
                                 coroutineScope.launch { drawerState.close(); if (!isPreviewMode) focusRequester.requestFocus() }
                             }.padding(vertical = 12.dp, horizontal = 16.dp).padding(start = ((item.level - 1) * 16).dp)) {
                                 Text(item.label, color = gruvboxText, style = if (item.level == 1) MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+
+                if (recents.isNotEmpty()) {
+                    HorizontalDivider(color = gruvboxSurface)
+                    Text("Recentes", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium, color = gruvboxOrange, fontWeight = FontWeight.Bold)
+                    LazyColumn(modifier = Modifier.heightIn(max = 220.dp)) {
+                        items(recents) { rf ->
+                            Box(modifier = Modifier.fillMaxWidth().clickable {
+                                openDocumentUri(Uri.parse(rf.uri))
+                                coroutineScope.launch { drawerState.close() }
+                            }.padding(vertical = 12.dp, horizontal = 16.dp)) {
+                                Text(rf.name, color = gruvboxText, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                             }
                         }
                     }
@@ -428,6 +459,41 @@ fun MarkEditorApp() {
                                         showExportMenu = false
                                     }
                                 )
+
+                                HorizontalDivider(color = gruvboxBg)
+                                DropdownMenuItem(
+                                    text = { Text("Fonte: ${fontSize.toInt()}", color = gruvboxText) },
+                                    trailingIcon = {
+                                        Row {
+                                            IconButton(onClick = {
+                                                fontSize = (fontSize - 1f).coerceAtLeast(12f)
+                                                appPrefs.edit().putFloat("fontsize", fontSize).apply()
+                                            }) { Icon(Icons.Default.Remove, "Diminuir", tint = gruvboxOrange) }
+                                            IconButton(onClick = {
+                                                fontSize = (fontSize + 1f).coerceAtMost(30f)
+                                                appPrefs.edit().putFloat("fontsize", fontSize).apply()
+                                            }) { Icon(Icons.Default.Add, "Aumentar", tint = gruvboxOrange) }
+                                        }
+                                    },
+                                    onClick = { }
+                                )
+
+                                HorizontalDivider(color = gruvboxBg)
+                                appPalettes.forEach { palette ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "Tema: ${palette.name}",
+                                                color = if (palette.name == currentPaletteName) gruvboxOrange else gruvboxText
+                                            )
+                                        },
+                                        onClick = {
+                                            applyPalette(palette)
+                                            appPrefs.edit().putString("palette", palette.name).apply()
+                                            showExportMenu = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -524,6 +590,7 @@ fun MarkEditorApp() {
                                 },
                                 startReadingFromOffset = readFromOffset,
                                 onStartReadingConsumed = { readFromOffset = null },
+                                fontSize = fontSize,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -592,7 +659,7 @@ fun MarkEditorApp() {
                         onValueChange = { updateTextState(continueListOnNewline(currentDoc.textState, it)) },
                         visualTransformation = MarkdownGruvboxTransformation(),
                         modifier = Modifier.fillMaxWidth().weight(1f).padding(8.dp).clip(RoundedCornerShape(8.dp)).focusRequester(focusRequester),
-                        textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 16.sp),
+                        textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = fontSize.sp),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
                             focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
