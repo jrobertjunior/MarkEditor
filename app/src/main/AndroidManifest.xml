@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Necessária para o WebView carregar o mermaid.js do CDN -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Visibilidade do motor de TTS (Android 11+ exige declarar) -->
     <queries>
         <intent>

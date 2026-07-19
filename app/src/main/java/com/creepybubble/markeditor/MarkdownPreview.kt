@@ -53,6 +53,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
+import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import kotlinx.coroutines.delay
@@ -100,10 +102,13 @@ fun MarkdownPreview(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val markwon = remember {
+    val density = LocalDensity.current
+    val markwon = remember(fontSize) {
+        val latexPx = with(density) { fontSize.sp.toPx() }
         Markwon.builder(context)
             .usePlugin(TablePlugin.create(context))
             .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(JLatexMathPlugin.create(latexPx))
             .build()
     }
 
@@ -235,6 +240,12 @@ fun MarkdownPreview(
                             onTextChange(blocks.joinToString("\n\n"))
                             if (editingIndex == index) editingIndex = null
                         }
+                    )
+
+                    isMermaidBlock(block) -> MermaidBlock(
+                        source = block,
+                        isSelected = index == selectedBlockIndex,
+                        onClick = onClick
                     )
 
                     isCodeBlock(block) -> CodeBlock(
@@ -522,6 +533,46 @@ private fun TaskListBlock(
         }
     }
 }
+
+@Composable
+private fun MermaidBlock(source: String, isSelected: Boolean, onClick: () -> Unit) {
+    val code = remember(source) { parseCodeBlock(source).second }
+    var mod = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 2.dp)
+        .height(320.dp)
+        .clickable(onClick = onClick)
+    if (isSelected) {
+        mod = mod.border(1.5.dp, gruvboxBlue, RoundedCornerShape(8.dp))
+    }
+    AndroidView(
+        modifier = mod,
+        factory = { ctx ->
+            android.webkit.WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
+        },
+        update = { web ->
+            web.loadDataWithBaseURL("https://cdn.jsdelivr.net", mermaidHtml(code), "text/html", "utf-8", null)
+        }
+    )
+}
+
+private fun mermaidHtml(code: String): String = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body style="margin:0;background:transparent;">
+<pre class="mermaid">$code</pre>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+</body>
+</html>
+""".trimIndent()
 
 @Composable
 private fun RenderedBlock(

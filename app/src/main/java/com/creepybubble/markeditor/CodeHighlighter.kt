@@ -64,6 +64,10 @@ fun highlightCode(code: String): CharSequence {
 /** Verifica se um bloco é um bloco de código cercado por ```. */
 fun isCodeBlock(block: String): Boolean = block.trimStart().startsWith("```")
 
+/** Verifica se é um bloco de diagrama Mermaid (```mermaid). */
+fun isMermaidBlock(block: String): Boolean =
+    isCodeBlock(block) && parseCodeBlock(block).first.equals("mermaid", ignoreCase = true)
+
 /** Extrai (linguagem, código) de um bloco cercado por ```. */
 fun parseCodeBlock(block: String): Pair<String, String> {
     val lines = block.split("\n")

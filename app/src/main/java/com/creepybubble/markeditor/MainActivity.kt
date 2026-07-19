@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +62,35 @@ fun getFileName(context: Context, uri: Uri): String {
         if (cut != -1) result = result?.substring(cut + 1)
     }
     return result ?: "Desconhecido.md"
+}
+
+/** Lista os arquivos markdown de uma pasta escolhida via árvore SAF. */
+fun listMarkdownInTree(context: Context, treeUri: Uri): List<Pair<Uri, String>> {
+    val result = mutableListOf<Pair<Uri, String>>()
+    try {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            treeUri, DocumentsContract.getTreeDocumentId(treeUri)
+        )
+        context.contentResolver.query(
+            childrenUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME
+            ),
+            null, null, null
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val docId = c.getString(0)
+                val name = c.getString(1) ?: continue
+                if (name.endsWith(".md", true) || name.endsWith(".markdown", true)) {
+                    result.add(DocumentsContract.buildDocumentUriUsingTree(treeUri, docId) to name)
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // Pasta inacessível ou vazia; devolve o que tiver.
+    }
+    return result.sortedBy { it.second.lowercase() }
 }
 
 class MainActivity : ComponentActivity() {
@@ -169,6 +199,9 @@ fun MarkEditorApp() {
     var fontSize by remember { mutableStateOf(appPrefs.getFloat("fontsize", 16f)) }
     var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
 
+    var showFolderDialog by remember { mutableStateOf(false) }
+    var folderFiles by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
+
     val tocItems = remember(currentDoc.textState.text) { extractToc(currentDoc.textState.text) }
 
     val updateTextState = { newState: TextFieldValue ->
@@ -235,6 +268,16 @@ fun MarkEditorApp() {
 
     val openFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { openDocumentUri(it) }
+    }
+
+    val openTreeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+        treeUri?.let {
+            try {
+                context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) { /* segue mesmo sem permissão persistente */ }
+            folderFiles = listMarkdownInTree(context, it)
+            showFolderDialog = true
+        }
     }
 
     val saveAsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri ->
@@ -350,6 +393,33 @@ fun MarkEditorApp() {
         )
     }
 
+    if (showFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { showFolderDialog = false },
+            title = { Text("Arquivos da pasta", color = gruvboxOrange) },
+            containerColor = gruvboxSurface,
+            text = {
+                if (folderFiles.isEmpty()) {
+                    Text("Nenhum arquivo .md encontrado nesta pasta.", color = gruvboxGray)
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                        items(folderFiles) { (fileUri, name) ->
+                            Box(modifier = Modifier.fillMaxWidth().clickable {
+                                openDocumentUri(fileUri)
+                                showFolderDialog = false
+                            }.padding(vertical = 12.dp, horizontal = 8.dp)) {
+                                Text(name, color = gruvboxText, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFolderDialog = false }) { Text("Fechar", color = gruvboxOrange) }
+            }
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -416,10 +486,6 @@ fun MarkEditorApp() {
                             Icon(Icons.Default.Save, "Salvar", tint = gruvboxText)
                         }
 
-                        IconButton(onClick = { saveAsLauncher.launch(currentDoc.name) }) {
-                            Icon(Icons.Default.SaveAs, "Salvar Como", tint = gruvboxText)
-                        }
-
                         IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, "Alternar", tint = gruvboxText) }
 
                         Box {
@@ -431,6 +497,21 @@ fun MarkEditorApp() {
                                 onDismissRequest = { showExportMenu = false },
                                 modifier = Modifier.background(gruvboxSurface)
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Abrir pasta", color = gruvboxText) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        openTreeLauncher.launch(null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Salvar como…", color = gruvboxText) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        saveAsLauncher.launch(currentDoc.name)
+                                    }
+                                )
+                                HorizontalDivider(color = gruvboxBg)
                                 DropdownMenuItem(
                                     text = { Text("Exportar HTML", color = gruvboxText) },
                                     onClick = {
@@ -645,6 +726,8 @@ fun MarkEditorApp() {
                                 })
                             }
                             item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }) }
+                            item { ToolBarButton("Mermaid", onClick = { insertAtCursor("\n```mermaid\ngraph TD\n    A[Início] --> B[Fim]\n```\n") }) }
+                            item { ToolBarButton("TeX", onClick = { insertAtCursor("\n${'$'}${'$'}\nE = mc^2\n${'$'}${'$'}\n") }) }
                             item {
                                 ToolBarIconButton(Icons.Default.VolumeUp, onClick = {
                                     readFromOffset = currentDoc.textState.selection.start

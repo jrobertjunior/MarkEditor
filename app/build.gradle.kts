@@ -60,6 +60,7 @@ dependencies {
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
+    implementation("io.noties.markwon:ext-latex:4.6.2")
     // A exportação para HTML usa o commonmark (org.commonmark.*) que o Markwon já traz.
     implementation("androidx.compose.material:material-icons-extended")
 }
