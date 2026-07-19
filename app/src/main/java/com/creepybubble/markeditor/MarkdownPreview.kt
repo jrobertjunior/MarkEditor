@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -57,6 +59,18 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
+import kotlinx.coroutines.delay
+
+/** Encontra o índice do bloco que contém um dado offset de caractere. */
+private fun blockIndexForOffset(blocks: List<String>, offset: Int): Int {
+    var acc = 0
+    for (i in blocks.indices) {
+        val len = blocks[i].length
+        if (offset <= acc + len) return i
+        acc += len + 2 // "\n\n" entre blocos
+    }
+    return (blocks.size - 1).coerceAtLeast(0)
+}
 
 /** Faixa da palavra sendo lida dentro do texto falado de um bloco. */
 private data class WordHighlight(val spoken: String, val start: Int, val end: Int)
@@ -77,6 +91,8 @@ fun MarkdownPreview(
     initialScrollIndex: Int = 0,
     initialScrollOffset: Int = 0,
     onScrollChanged: (Int, Int) -> Unit = { _, _ -> },
+    startReadingFromOffset: Int? = null,
+    onStartReadingConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -138,6 +154,43 @@ fun MarkdownPreview(
             .collect { (i, o) -> onScrollChanged(i, o) }
     }
 
+    // "Ler a partir do cursor": rola até o bloco e começa a leitura ali.
+    LaunchedEffect(startReadingFromOffset) {
+        val offset = startReadingFromOffset ?: return@LaunchedEffect
+        val idx = blockIndexForOffset(blocks, offset)
+        selectedBlockIndex = idx // fallback caso o motor ainda não esteja pronto
+        listState.animateScrollToItem(idx)
+        delay(350) // dá tempo para o motor de TTS iniciar
+        tts.speak(blocks.toList(), idx)
+        onStartReadingConsumed()
+    }
+
+    // Contagem de palavras acumulada por bloco, para o progresso de leitura.
+    // Derivada direto do texto para nunca ficar defasada após edições.
+    val wordPrefix = remember(text) {
+        val bl = splitIntoBlocks(text)
+        val arr = IntArray(bl.size + 1)
+        for (i in bl.indices) arr[i + 1] = arr[i] + countWords(bl[i])
+        arr
+    }
+    val totalWords = wordPrefix.lastOrNull() ?: 0
+    // Palavras "já passadas": pelo TTS quando lendo, senão pela posição do scroll (contínua).
+    val positionWords: Float = if (tts.currentIndex >= 0) {
+        wordPrefix.getOrElse(tts.currentIndex.coerceIn(0, wordPrefix.size - 1)) { 0 }.toFloat()
+    } else {
+        val first = listState.firstVisibleItemIndex.coerceIn(0, wordPrefix.size - 1)
+        val base = wordPrefix.getOrElse(first) { 0 }
+        val next = wordPrefix.getOrElse(first + 1) { base }
+        // Quanto já rolamos dentro do bloco visível (0..1), para um progresso suave.
+        val itemSize = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == first }?.size ?: 0
+        val intra = if (itemSize > 0) {
+            (listState.firstVisibleItemScrollOffset.toFloat() / itemSize).coerceIn(0f, 1f)
+        } else 0f
+        base + intra * (next - base)
+    }
+    val fraction = if (totalWords > 0) (positionWords / totalWords).coerceIn(0f, 1f) else 0f
+    val wordsLeft = (totalWords - positionWords).toInt().coerceAtLeast(0)
+
     Column(modifier = modifier) {
         TtsControlBar(
             isSpeaking = tts.isSpeaking,
@@ -160,7 +213,7 @@ fun MarkdownPreview(
             onStop = { tts.stop() },
             onOpenSettings = { showTtsSettings = true }
         )
-        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f).padding(8.dp)) {
             itemsIndexed(blocks) { index, block ->
                 if (editingIndex == index) {
                     BlockEditField(
@@ -195,6 +248,48 @@ fun MarkdownPreview(
                     )
                 }
             }
+        }
+        ReadingProgressBar(fraction = fraction, wordsLeft = wordsLeft, totalWords = totalWords)
+    }
+}
+
+@Composable
+private fun ReadingProgressBar(fraction: Float, wordsLeft: Int, totalWords: Int) {
+    val percent = (fraction * 100).toInt().coerceIn(0, 100)
+    val minutesLeft = readingMinutes(wordsLeft)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(gruvboxSurface)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        // Trilha fina de progresso.
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(gruvboxBg)
+        ) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(gruvboxOrange)
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("$percent% lido", color = gruvboxGray, fontSize = 12.sp)
+            Text(
+                text = if (totalWords <= 0) "" else "~$minutesLeft min restantes",
+                color = gruvboxGray,
+                fontSize = 12.sp
+            )
         }
     }
 }

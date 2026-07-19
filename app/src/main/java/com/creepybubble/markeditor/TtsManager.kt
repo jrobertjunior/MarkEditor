@@ -10,6 +10,7 @@ import android.speech.tts.Voice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,21 @@ data class TtsVoiceOption(val name: String, val label: String, val subtitle: Str
 
 /** Um idioma disponível entre as vozes (para filtrar a lista). */
 data class TtsLanguageOption(val code: String, val label: String)
+
+/** Frase de exemplo para o botão "testar voz", por código de idioma. */
+private val sampleByLanguage = mapOf(
+    "pt" to "Este é um exemplo da voz selecionada.",
+    "en" to "This is an example of the selected voice.",
+    "es" to "Este es un ejemplo de la voz seleccionada.",
+    "fr" to "Ceci est un exemple de la voix sélectionnée.",
+    "de" to "Dies ist ein Beispiel der ausgewählten Stimme.",
+    "it" to "Questo è un esempio della voce selezionata.",
+    "nl" to "Dit is een voorbeeld van de geselecteerde stem.",
+    "ru" to "Это пример выбранного голоса.",
+    "ja" to "これは選択した音声の例です。",
+    "ko" to "선택한 음성의 예입니다.",
+    "zh" to "这是所选语音的示例。"
+)
 
 /**
  * Remove a sintaxe do markdown para que o TTS leia só o texto "de verdade".
@@ -130,7 +146,23 @@ class TtsManager(context: Context) {
     var selectedVoice by mutableStateOf<String?>(null)
         private set
 
+    /** Velocidade da fala (1.0 = normal). */
+    var speechRate by mutableFloatStateOf(1.0f)
+        private set
+
+    /** Tom da fala (1.0 = normal). */
+    var pitch by mutableFloatStateOf(1.0f)
+        private set
+
+    /** Minutos do timer de soneca (0 = desligado). */
+    var sleepTimerMinutes by mutableIntStateOf(0)
+        private set
+
+    private var sleepRunnable: Runnable? = null
+
     init {
+        speechRate = prefs.getFloat("rate", 1.0f)
+        pitch = prefs.getFloat("pitch", 1.0f)
         // Começa com o motor salvo (ou o padrão do sistema, se não houver).
         initEngine(prefs.getString("engine", null))
     }
@@ -161,6 +193,8 @@ class TtsManager(context: Context) {
         if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
             engine.setLanguage(Locale.getDefault())
         }
+        engine.setSpeechRate(speechRate)
+        engine.setPitch(pitch)
 
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
@@ -333,6 +367,52 @@ class TtsManager(context: Context) {
     fun spokenText(index: Int): String =
         blocks.getOrNull(index)?.let { stripMarkdown(it) } ?: ""
 
+    fun updateSpeechRate(value: Float) {
+        speechRate = value.coerceIn(0.5f, 2.5f)
+        tts?.setSpeechRate(speechRate)
+        prefs.edit().putFloat("rate", speechRate).apply()
+    }
+
+    fun updatePitch(value: Float) {
+        pitch = value.coerceIn(0.5f, 2.0f)
+        tts?.setPitch(pitch)
+        prefs.edit().putFloat("pitch", pitch).apply()
+    }
+
+    /** Fala uma frase de exemplo no idioma da voz atual (não altera o estado de leitura). */
+    fun previewVoice() {
+        val engine = tts ?: return
+        if (!ready) return
+        engine.setSpeechRate(speechRate)
+        engine.setPitch(pitch)
+        val lang = currentVoiceLanguage()
+        val sample = sampleByLanguage[lang] ?: sampleByLanguage["en"]!!
+        engine.speak(sample, TextToSpeech.QUEUE_FLUSH, null, "preview")
+    }
+
+    /** Idioma da voz em uso (cai no filtro ou em pt se não der para determinar). */
+    private fun currentVoiceLanguage(): String {
+        val fromVoice = allVoices.firstOrNull { it.name == selectedVoice }?.locale?.language
+        return fromVoice ?: selectedLanguage ?: "pt"
+    }
+
+    /** Agenda a parada automática da leitura após [minutes] minutos (0 = desliga). */
+    fun setSleepTimer(minutes: Int) {
+        sleepRunnable?.let { mainHandler.removeCallbacks(it) }
+        sleepTimerMinutes = minutes
+        if (minutes <= 0) {
+            sleepRunnable = null
+            return
+        }
+        val r = Runnable {
+            stop()
+            sleepTimerMinutes = 0
+            sleepRunnable = null
+        }
+        sleepRunnable = r
+        mainHandler.postDelayed(r, minutes * 60_000L)
+    }
+
     private fun speakFrom(index: Int) {
         val engine = tts ?: return
         if (!ready || blocks.isEmpty()) return
@@ -388,6 +468,9 @@ class TtsManager(context: Context) {
     }
 
     fun shutdown() {
+        sleepRunnable?.let { mainHandler.removeCallbacks(it) }
+        sleepRunnable = null
+        sleepTimerMinutes = 0
         tts?.stop()
         tts?.shutdown()
         tts = null

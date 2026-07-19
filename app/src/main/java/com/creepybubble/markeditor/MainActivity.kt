@@ -150,6 +150,9 @@ fun MarkEditorApp() {
     var linkText by remember { mutableStateOf("") }
     var linkUrl by remember { mutableStateOf("") }
 
+    // Offset do cursor a partir do qual iniciar a leitura ao entrar no preview.
+    var readFromOffset by remember { mutableStateOf<Int?>(null) }
+
     val tocItems = remember(currentDoc.textState.text) { extractToc(currentDoc.textState.text) }
 
     val updateTextState = { newState: TextFieldValue ->
@@ -440,6 +443,8 @@ fun MarkEditorApp() {
                                     currentDoc.previewScrollIndex = i
                                     currentDoc.previewScrollOffset = o
                                 },
+                                startReadingFromOffset = readFromOffset,
+                                onStartReadingConsumed = { readFromOffset = null },
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -491,6 +496,12 @@ fun MarkEditorApp() {
                                 })
                             }
                             item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }) }
+                            item {
+                                ToolBarIconButton(Icons.Default.VolumeUp, onClick = {
+                                    readFromOffset = currentDoc.textState.selection.start
+                                    isPreviewMode = true
+                                })
+                            }
                         }
                     }
 
