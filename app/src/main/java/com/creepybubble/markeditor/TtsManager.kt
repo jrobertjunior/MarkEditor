@@ -8,7 +8,6 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -87,10 +86,27 @@ fun stripMarkdown(input: String): String {
  * e a voz, além de controlar a leitura (ler, pausar, pular, parar). As escolhas de
  * motor/voz ficam salvas em SharedPreferences e sobrevivem ao fechar o app.
  */
-class TtsManager(context: Context) {
+class TtsManager private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val prefs: SharedPreferences =
         appContext.getSharedPreferences("tts_prefs", Context.MODE_PRIVATE)
+
+    companion object {
+        @Volatile
+        private var instance: TtsManager? = null
+
+        /** Instância única no processo — compartilhada entre UI e serviço de segundo plano. */
+        fun get(context: Context): TtsManager =
+            instance ?: synchronized(this) {
+                instance ?: TtsManager(context.applicationContext).also { instance = it }
+            }
+    }
+
+    /** Chamado (na main thread) sempre que o estado de leitura muda — usado pela notificação. */
+    var onStateChanged: (() -> Unit)? = null
+
+    /** Título mostrado na notificação de mídia (nome do documento). */
+    var currentTitle: String = "Documento"
 
     private var tts: TextToSpeech? = null
     private var ready = false
@@ -206,6 +222,7 @@ class TtsManager(context: Context) {
                     currentWordEnd = -1
                     isSpeaking = true
                     isPaused = false
+                    notifyState()
                 }
             }
 
@@ -435,6 +452,7 @@ class TtsManager(context: Context) {
         if (lastIndex >= 0) {
             isSpeaking = true
             isPaused = false
+            notifyState()
         } else {
             resetState()
         }
@@ -445,6 +463,7 @@ class TtsManager(context: Context) {
         tts?.stop()
         isSpeaking = false
         isPaused = true
+        notifyState()
     }
 
     fun resume() {
@@ -502,6 +521,11 @@ class TtsManager(context: Context) {
         currentIndex = -1
         currentWordStart = -1
         currentWordEnd = -1
+        notifyState()
+    }
+
+    private fun notifyState() {
+        onStateChanged?.invoke()
     }
 }
 
@@ -512,9 +536,6 @@ class TtsManager(context: Context) {
 @Composable
 fun rememberTtsManager(): TtsManager {
     val context = LocalContext.current
-    val manager = remember { TtsManager(context) }
-    DisposableEffect(Unit) {
-        onDispose { manager.shutdown() }
-    }
-    return manager
+    // Singleton do processo: NÃO desligamos ao sair da tela, para permitir leitura em segundo plano.
+    return remember { TtsManager.get(context) }
 }

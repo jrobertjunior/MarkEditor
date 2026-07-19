@@ -1,5 +1,6 @@
 package com.creepybubble.markeditor
 
+import android.content.Intent
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
@@ -99,6 +100,7 @@ fun MarkdownPreview(
     startReadingFromOffset: Int? = null,
     onStartReadingConsumed: () -> Unit = {},
     fontSize: Float = 16f,
+    documentTitle: String = "Documento",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -118,6 +120,12 @@ fun MarkdownPreview(
     val listState = rememberLazyListState(initialScrollIndex, initialScrollOffset)
     val tts = rememberTtsManager()
     var showTtsSettings by remember { mutableStateOf(false) }
+
+    // Inicia o serviço em foreground para permitir leitura em segundo plano + notificação.
+    val startTtsService = {
+        tts.currentTitle = documentTitle
+        context.startForegroundService(Intent(context, TtsService::class.java))
+    }
 
     if (showTtsSettings) {
         TtsSettingsDialog(tts = tts, onDismiss = { showTtsSettings = false })
@@ -170,6 +178,7 @@ fun MarkdownPreview(
         selectedBlockIndex = idx // fallback caso o motor ainda não esteja pronto
         listState.animateScrollToItem(idx)
         delay(350) // dá tempo para o motor de TTS iniciar
+        startTtsService()
         tts.speak(blocks.toList(), idx)
         onStartReadingConsumed()
     }
@@ -211,10 +220,17 @@ fun MarkdownPreview(
                     // Uma seção selecionada tem prioridade: começa a leitura ali e "consome" a seleção.
                     start != null -> {
                         selectedBlockIndex = null
+                        startTtsService()
                         tts.speak(blocks.toList(), start)
                     }
-                    tts.isPaused -> tts.resume()
-                    else -> tts.speak(blocks.toList(), 0)
+                    tts.isPaused -> {
+                        startTtsService()
+                        tts.resume()
+                    }
+                    else -> {
+                        startTtsService()
+                        tts.speak(blocks.toList(), 0)
+                    }
                 }
             },
             onPrevious = { tts.previous() },

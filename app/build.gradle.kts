@@ -63,4 +63,6 @@ dependencies {
     implementation("io.noties.markwon:ext-latex:4.6.2")
     // A exportação para HTML usa o commonmark (org.commonmark.*) que o Markwon já traz.
     implementation("androidx.compose.material:material-icons-extended")
+    // MediaSession + notificação de mídia para a leitura em segundo plano.
+    implementation("androidx.media:media:1.7.0")
 }

@@ -1,12 +1,15 @@
 package com.creepybubble.markeditor
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -201,6 +204,14 @@ fun MarkEditorApp() {
 
     var showFolderDialog by remember { mutableStateOf(false) }
     var folderFiles by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
+
+    // Permissão de notificação (Android 13+) para a notificação de mídia da leitura.
+    val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     val tocItems = remember(currentDoc.textState.text) { extractToc(currentDoc.textState.text) }
 
@@ -672,6 +683,7 @@ fun MarkEditorApp() {
                                 startReadingFromOffset = readFromOffset,
                                 onStartReadingConsumed = { readFromOffset = null },
                                 fontSize = fontSize,
+                                documentTitle = currentDoc.name,
                                 modifier = Modifier.fillMaxSize()
                             )
                         }

@@ -5,6 +5,11 @@
     <!-- Necessária para o WebView carregar o mermaid.js do CDN -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Leitura em segundo plano com notificação de mídia -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
     <!-- Visibilidade do motor de TTS (Android 11+ exige declarar) -->
     <queries>
         <intent>
@@ -32,6 +37,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".TtsService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 
 </manifest>
