@@ -192,9 +192,20 @@ fun MarkdownPreview(
         arr
     }
     val totalWords = wordPrefix.lastOrNull() ?: 0
+    // Detecta se o fim do conteúdo já está inteiramente na tela (não há mais o que rolar).
+    // Sem isso, o progresso fica preso no "início" do último bloco visível no topo.
+    val atEnd = run {
+        val li = listState.layoutInfo
+        val last = li.visibleItemsInfo.lastOrNull()
+        last != null && last.index == li.totalItemsCount - 1 &&
+            last.offset + last.size <= li.viewportEndOffset - li.afterContentPadding
+    }
     // Palavras "já passadas": pelo TTS quando lendo, senão pela posição do scroll (contínua).
     val positionWords: Float = if (tts.currentIndex >= 0) {
         wordPrefix.getOrElse(tts.currentIndex.coerceIn(0, wordPrefix.size - 1)) { 0 }.toFloat()
+    } else if (atEnd) {
+        // Chegou ao fim: 100%, independente de qual bloco está no topo.
+        totalWords.toFloat()
     } else {
         val first = listState.firstVisibleItemIndex.coerceIn(0, wordPrefix.size - 1)
         val base = wordPrefix.getOrElse(first) { 0 }

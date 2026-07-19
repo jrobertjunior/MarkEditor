@@ -217,6 +217,7 @@ fun MarkEditorApp(
     val appPrefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
     var autoSaveEnabled by remember { mutableStateOf(appPrefs.getBoolean("autosave", true)) }
     var showExportMenu by remember { mutableStateOf(false) }
+    var menuPage by remember { mutableStateOf("main") } // "main" | "themes" | "recents"
 
     // Aplica o tema salvo uma única vez.
     remember {
@@ -473,7 +474,7 @@ fun MarkEditorApp(
                 if (tocItems.isEmpty()) {
                     Text("Nenhum capítulo encontrado.", modifier = Modifier.padding(16.dp), color = gruvboxGray)
                 } else {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(tocItems) { item ->
                             Box(modifier = Modifier.fillMaxWidth().clickable {
                                 updateTextState(currentDoc.textState.copy(selection = TextRange(item.index)))
@@ -481,21 +482,6 @@ fun MarkEditorApp(
                                 coroutineScope.launch { drawerState.close(); if (!isPreviewMode) focusRequester.requestFocus() }
                             }.padding(vertical = 12.dp, horizontal = 16.dp).padding(start = ((item.level - 1) * 16).dp)) {
                                 Text(item.label, color = gruvboxText, style = if (item.level == 1) MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-
-                if (recents.isNotEmpty()) {
-                    HorizontalDivider(color = gruvboxSurface)
-                    Text("Recentes", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium, color = gruvboxOrange, fontWeight = FontWeight.Bold)
-                    LazyColumn(modifier = Modifier.heightIn(max = 220.dp)) {
-                        items(recents) { rf ->
-                            Box(modifier = Modifier.fillMaxWidth().clickable {
-                                openDocumentUri(Uri.parse(rf.uri))
-                                coroutineScope.launch { drawerState.close() }
-                            }.padding(vertical = 12.dp, horizontal = 16.dp)) {
-                                Text(rf.name, color = gruvboxText, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                             }
                         }
                     }
@@ -512,10 +498,28 @@ fun MarkEditorApp(
                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Índice", tint = gruvboxOrange) }
                     },
                     actions = {
+                        // Ícones fixos, disponíveis nos dois modos (edição e visualização)
+                        IconButton(onClick = { currentDoc.undoRedoManager.undo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canUndo) {
+                            Icon(Icons.Default.Undo, "Desfazer", tint = if (currentDoc.undoRedoManager.canUndo) gruvboxText else gruvboxGray)
+                        }
+                        IconButton(onClick = { currentDoc.undoRedoManager.redo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canRedo) {
+                            Icon(Icons.Default.Redo, "Refazer", tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray)
+                        }
+                        IconButton(onClick = {
+                            val uri = currentDoc.uri
+                            if (uri != null && saveFile(uri, currentDoc.textState.text)) {
+                                currentDoc.savedText = currentDoc.textState.text
+                            } else {
+                                saveAsLauncher.launch(currentDoc.name)
+                            }
+                        }) { Icon(Icons.Default.Save, "Salvar", tint = gruvboxText) }
+                        IconButton(onClick = { openFileLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.FolderOpen, "Abrir arquivo", tint = gruvboxText) }
+                        IconButton(onClick = { openTreeLauncher.launch(null) }) { Icon(Icons.Default.Folder, "Abrir pasta", tint = gruvboxText) }
+
                         IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, "Alternar", tint = gruvboxText) }
 
                         Box {
-                            IconButton(onClick = { showExportMenu = true }) {
+                            IconButton(onClick = { menuPage = "main"; showExportMenu = true }) {
                                 Icon(Icons.Default.MoreVert, "Menu", tint = gruvboxText)
                             }
                             DropdownMenu(
@@ -523,130 +527,188 @@ fun MarkEditorApp(
                                 onDismissRequest = { showExportMenu = false },
                                 modifier = Modifier.background(gruvboxSurface)
                             ) {
-                                // ---- Arquivo ----
-                                MenuSection("Arquivo")
-                                DropdownMenuItem(
-                                    text = { Text("Novo", color = gruvboxText) },
-                                    leadingIcon = { Icon(Icons.Default.Add, null, tint = gruvboxGray) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        documents.add(Document())
-                                        selectedIndex = documents.size - 1
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Abrir arquivo", color = gruvboxText) },
-                                    leadingIcon = { Icon(Icons.Default.FolderOpen, null, tint = gruvboxGray) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        openFileLauncher.launch(arrayOf("*/*"))
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Abrir pasta", color = gruvboxText) },
-                                    leadingIcon = { Icon(Icons.Default.Folder, null, tint = gruvboxGray) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        openTreeLauncher.launch(null)
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Salvar", color = gruvboxText) },
-                                    leadingIcon = { Icon(Icons.Default.Save, null, tint = gruvboxGray) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        val uri = currentDoc.uri
-                                        if (uri != null && saveFile(uri, currentDoc.textState.text)) {
-                                            currentDoc.savedText = currentDoc.textState.text
-                                        } else {
-                                            saveAsLauncher.launch(currentDoc.name)
-                                        }
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Salvar como…", color = gruvboxText) },
-                                    leadingIcon = { Icon(Icons.Default.SaveAs, null, tint = gruvboxGray) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        saveAsLauncher.launch(currentDoc.name)
-                                    }
-                                )
-
-                                HorizontalDivider(color = gruvboxBg)
-                                // ---- Exportar ----
-                                MenuSection("Exportar")
-                                DropdownMenuItem(
-                                    text = { Text("Exportar HTML", color = gruvboxText) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        exportHtmlLauncher.launch(currentDoc.name.removeSuffix(".md") + ".html")
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Exportar PDF", color = gruvboxText) },
-                                    onClick = {
-                                        showExportMenu = false
-                                        exportPdfLauncher.launch(currentDoc.name.removeSuffix(".md") + ".pdf")
-                                    }
-                                )
-
-                                HorizontalDivider(color = gruvboxBg)
-                                // ---- Aparência ----
-                                MenuSection("Aparência")
-                                DropdownMenuItem(
-                                    text = { Text("Tamanho da fonte: ${fontSize.toInt()}", color = gruvboxText) },
-                                    trailingIcon = {
-                                        Row {
-                                            IconButton(onClick = {
-                                                fontSize = (fontSize - 1f).coerceAtLeast(12f)
-                                                appPrefs.edit().putFloat("fontsize", fontSize).apply()
-                                            }) { Icon(Icons.Default.Remove, "Diminuir", tint = gruvboxOrange) }
-                                            IconButton(onClick = {
-                                                fontSize = (fontSize + 1f).coerceAtMost(30f)
-                                                appPrefs.edit().putFloat("fontsize", fontSize).apply()
-                                            }) { Icon(Icons.Default.Add, "Aumentar", tint = gruvboxOrange) }
-                                        }
-                                    },
-                                    onClick = { }
-                                )
-                                appPalettes.forEach { palette ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                "Tema: ${palette.name}",
-                                                color = if (palette.name == currentPaletteName) gruvboxOrange else gruvboxText
-                                            )
-                                        },
-                                        onClick = {
-                                            applyPalette(palette)
-                                            appPrefs.edit().putString("palette", palette.name).apply()
-                                            showExportMenu = false
-                                        }
-                                    )
-                                }
-
-                                HorizontalDivider(color = gruvboxBg)
-                                // ---- Preferências ----
-                                MenuSection("Preferências")
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (autoSaveEnabled) "Auto-salvar: ligado" else "Auto-salvar: desligado",
-                                            color = if (autoSaveEnabled) gruvboxOrange else gruvboxGray
+                                when (menuPage) {
+                                    // ======== Submenu: Temas ========
+                                    "themes" -> {
+                                        DropdownMenuItem(
+                                            text = { Text("Temas", color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, "Voltar", tint = gruvboxOrange) },
+                                            onClick = { menuPage = "main" }
                                         )
-                                    },
-                                    onClick = {
-                                        autoSaveEnabled = !autoSaveEnabled
-                                        appPrefs.edit().putBoolean("autosave", autoSaveEnabled).apply()
-                                        showExportMenu = false
+                                        HorizontalDivider(color = gruvboxBg)
+                                        appPalettes.forEach { palette ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        palette.name,
+                                                        color = if (palette.name == currentPaletteName) gruvboxOrange else gruvboxText
+                                                    )
+                                                },
+                                                onClick = {
+                                                    applyPalette(palette)
+                                                    appPrefs.edit().putString("palette", palette.name).apply()
+                                                    showExportMenu = false
+                                                }
+                                            )
+                                        }
                                     }
-                                )
+
+                                    // ======== Submenu: Recentes ========
+                                    "recents" -> {
+                                        DropdownMenuItem(
+                                            text = { Text("Recentes", color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, "Voltar", tint = gruvboxOrange) },
+                                            onClick = { menuPage = "main" }
+                                        )
+                                        HorizontalDivider(color = gruvboxBg)
+                                        if (recents.isEmpty()) {
+                                            DropdownMenuItem(
+                                                text = { Text("Nenhum arquivo recente", color = gruvboxGray) },
+                                                enabled = false,
+                                                onClick = { }
+                                            )
+                                        } else {
+                                            recents.forEach { rf ->
+                                                DropdownMenuItem(
+                                                    text = { Text(rf.name, color = gruvboxText, maxLines = 1) },
+                                                    onClick = {
+                                                        showExportMenu = false
+                                                        openDocumentUri(Uri.parse(rf.uri))
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // ======== Página principal ========
+                                    else -> {
+                                        MenuSection("Arquivo")
+                                        DropdownMenuItem(
+                                            text = { Text("Novo", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Add, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                documents.add(Document())
+                                                selectedIndex = documents.size - 1
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Abrir arquivo", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.FolderOpen, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                openFileLauncher.launch(arrayOf("*/*"))
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Abrir pasta", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Folder, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                openTreeLauncher.launch(null)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Recentes", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.History, null, tint = gruvboxGray) },
+                                            trailingIcon = { Icon(Icons.Default.ChevronRight, null, tint = gruvboxGray) },
+                                            onClick = { menuPage = "recents" }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Salvar", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Save, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                val uri = currentDoc.uri
+                                                if (uri != null && saveFile(uri, currentDoc.textState.text)) {
+                                                    currentDoc.savedText = currentDoc.textState.text
+                                                } else {
+                                                    saveAsLauncher.launch(currentDoc.name)
+                                                }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Salvar como…", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.SaveAs, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                saveAsLauncher.launch(currentDoc.name)
+                                            }
+                                        )
+
+                                        HorizontalDivider(color = gruvboxBg)
+                                        MenuSection("Exportar")
+                                        DropdownMenuItem(
+                                            text = { Text("Exportar HTML", color = gruvboxText) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                exportHtmlLauncher.launch(currentDoc.name.removeSuffix(".md") + ".html")
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Exportar PDF", color = gruvboxText) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                exportPdfLauncher.launch(currentDoc.name.removeSuffix(".md") + ".pdf")
+                                            }
+                                        )
+
+                                        HorizontalDivider(color = gruvboxBg)
+                                        MenuSection("Aparência")
+                                        DropdownMenuItem(
+                                            text = { Text("Tamanho da fonte: ${fontSize.toInt()}", color = gruvboxText) },
+                                            trailingIcon = {
+                                                Row {
+                                                    IconButton(onClick = {
+                                                        fontSize = (fontSize - 1f).coerceAtLeast(12f)
+                                                        appPrefs.edit().putFloat("fontsize", fontSize).apply()
+                                                    }) { Icon(Icons.Default.Remove, "Diminuir", tint = gruvboxOrange) }
+                                                    IconButton(onClick = {
+                                                        fontSize = (fontSize + 1f).coerceAtMost(30f)
+                                                        appPrefs.edit().putFloat("fontsize", fontSize).apply()
+                                                    }) { Icon(Icons.Default.Add, "Aumentar", tint = gruvboxOrange) }
+                                                }
+                                            },
+                                            onClick = { }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Tema: $currentPaletteName", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Palette, null, tint = gruvboxGray) },
+                                            trailingIcon = { Icon(Icons.Default.ChevronRight, null, tint = gruvboxGray) },
+                                            onClick = { menuPage = "themes" }
+                                        )
+
+                                        HorizontalDivider(color = gruvboxBg)
+                                        MenuSection("Preferências")
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    if (autoSaveEnabled) "Auto-salvar: ligado" else "Auto-salvar: desligado",
+                                                    color = if (autoSaveEnabled) gruvboxOrange else gruvboxGray
+                                                )
+                                            },
+                                            onClick = {
+                                                autoSaveEnabled = !autoSaveEnabled
+                                                appPrefs.edit().putBoolean("autosave", autoSaveEnabled).apply()
+                                                showExportMenu = false
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 )
             },
             bottomBar = {
+                // Envelope com fundo do corpo + padding, pra barra virar um "card" arredondado igual ao corpo
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(gruvboxBg)
+                        .navigationBarsPadding() // Proteção contra a barra da Samsung
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
                 ScrollableTabRow(
                     selectedTabIndex = safeIndex,
                     containerColor = gruvboxSurface,
@@ -663,7 +725,7 @@ fun MarkEditorApp(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding() // Proteção contra a barra da Samsung
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
                     documents.forEachIndexed { index, doc ->
                         Tab(
@@ -712,6 +774,7 @@ fun MarkEditorApp(
                         )
                     }
                 }
+                }
             }
         ) { innerPadding ->
             Column(modifier = Modifier.fillMaxSize().padding(innerPadding).imePadding().background(gruvboxBg)) {
@@ -756,19 +819,7 @@ fun MarkEditorApp(
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 1. Botões FIXOS (Undo / Redo)
-                        ToolBarIconButton(Icons.Default.Undo, onClick = { currentDoc.undoRedoManager.undo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canUndo, tint = if (currentDoc.undoRedoManager.canUndo) gruvboxText else gruvboxGray, label = "Desfazer")
-                        Spacer(modifier = Modifier.width(4.dp))
-                        ToolBarIconButton(Icons.Default.Redo, onClick = { currentDoc.undoRedoManager.redo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canRedo, tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray, label = "Refazer")
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // 2. Divisor visual elegante
-                        Box(modifier = Modifier.width(2.dp).height(24.dp).background(gruvboxBg))
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // 3. Botões ROLÁVEIS ocupando o resto do espaço
+                        // Botões de formatação (roláveis, ocupando toda a largura)
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
