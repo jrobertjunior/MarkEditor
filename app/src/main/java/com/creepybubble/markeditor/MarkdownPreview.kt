@@ -431,7 +431,7 @@ private fun TtsButton(
         enabled = enabled,
         modifier = Modifier
             .size(40.dp)
-            .background(Color(if (enabled) 0xFF504945 else 0xFF3C3836), RoundedCornerShape(8.dp))
+            .background(if (enabled) gruvboxButton else gruvboxButtonDisabled, RoundedCornerShape(8.dp))
     ) {
         Icon(
             imageVector = icon,

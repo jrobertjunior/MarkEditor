@@ -18,7 +18,9 @@ data class AppPalette(
     val blue: Color,
     val gray: Color,
     val purple: Color,
-    val lilac: Color
+    val lilac: Color,
+    val button: Color,
+    val buttonDisabled: Color
 )
 
 val gruvboxDarkPalette = AppPalette(
@@ -26,7 +28,8 @@ val gruvboxDarkPalette = AppPalette(
     bg = Color(0xFF282828), surface = Color(0xFF3C3836), text = Color(0xFFEBDBB2),
     red = Color(0xFFCC241D), orange = Color(0xFFD65D0E), yellow = Color(0xFFD79921),
     aqua = Color(0xFF689D6A), blue = Color(0xFF458588), gray = Color(0xFF928374),
-    purple = Color(0xFFB16286), lilac = Color(0xFFD3869B)
+    purple = Color(0xFFB16286), lilac = Color(0xFFD3869B),
+    button = Color(0xFF504945), buttonDisabled = Color(0xFF3C3836)
 )
 
 val gruvboxLightPalette = AppPalette(
@@ -34,7 +37,8 @@ val gruvboxLightPalette = AppPalette(
     bg = Color(0xFFFBF1C7), surface = Color(0xFFEBDBB2), text = Color(0xFF3C3836),
     red = Color(0xFF9D0006), orange = Color(0xFFAF3A03), yellow = Color(0xFFB57614),
     aqua = Color(0xFF427B58), blue = Color(0xFF076678), gray = Color(0xFF7C6F64),
-    purple = Color(0xFF8F3F71), lilac = Color(0xFFB16286)
+    purple = Color(0xFF8F3F71), lilac = Color(0xFFB16286),
+    button = Color(0xFFD5C4A1), buttonDisabled = Color(0xFFECE3CC)
 )
 
 val nordPalette = AppPalette(
@@ -42,7 +46,8 @@ val nordPalette = AppPalette(
     bg = Color(0xFF2E3440), surface = Color(0xFF3B4252), text = Color(0xFFD8DEE9),
     red = Color(0xFFBF616A), orange = Color(0xFFD08770), yellow = Color(0xFFEBCB8B),
     aqua = Color(0xFFA3BE8C), blue = Color(0xFF81A1C1), gray = Color(0xFF7B88A1),
-    purple = Color(0xFFB48EAD), lilac = Color(0xFFB48EAD)
+    purple = Color(0xFFB48EAD), lilac = Color(0xFFB48EAD),
+    button = Color(0xFF434C5E), buttonDisabled = Color(0xFF3B4252)
 )
 
 val appPalettes = listOf(gruvboxDarkPalette, gruvboxLightPalette, nordPalette)
@@ -70,6 +75,10 @@ var gruvboxPurple by mutableStateOf(gruvboxDarkPalette.purple)
     private set
 var gruvboxLilac by mutableStateOf(gruvboxDarkPalette.lilac)
     private set
+var gruvboxButton by mutableStateOf(gruvboxDarkPalette.button)
+    private set
+var gruvboxButtonDisabled by mutableStateOf(gruvboxDarkPalette.buttonDisabled)
+    private set
 
 var currentPaletteName by mutableStateOf(gruvboxDarkPalette.name)
     private set
@@ -87,5 +96,7 @@ fun applyPalette(p: AppPalette) {
     gruvboxGray = p.gray
     gruvboxPurple = p.purple
     gruvboxLilac = p.lilac
+    gruvboxButton = p.button
+    gruvboxButtonDisabled = p.buttonDisabled
     currentPaletteName = p.name
 }

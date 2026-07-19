@@ -512,50 +512,69 @@ fun MarkEditorApp(
                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Índice", tint = gruvboxOrange) }
                     },
                     actions = {
-                        IconButton(onClick = {
-                            documents.add(Document())
-                            selectedIndex = documents.size - 1
-                        }) { Icon(Icons.Default.Add, "Novo Arquivo", tint = gruvboxText) }
-
-                        IconButton(onClick = { openFileLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.FolderOpen, "Abrir", tint = gruvboxText) }
-
-                        IconButton(onClick = {
-                            val uri = currentDoc.uri
-                            if (uri != null && saveFile(uri, currentDoc.textState.text)) {
-                                currentDoc.savedText = currentDoc.textState.text
-                            } else {
-                                saveAsLauncher.launch(currentDoc.name)
-                            }
-                        }) {
-                            Icon(Icons.Default.Save, "Salvar", tint = gruvboxText)
-                        }
-
                         IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, "Alternar", tint = gruvboxText) }
 
                         Box {
                             IconButton(onClick = { showExportMenu = true }) {
-                                Icon(Icons.Default.MoreVert, "Mais opções", tint = gruvboxText)
+                                Icon(Icons.Default.MoreVert, "Menu", tint = gruvboxText)
                             }
                             DropdownMenu(
                                 expanded = showExportMenu,
                                 onDismissRequest = { showExportMenu = false },
                                 modifier = Modifier.background(gruvboxSurface)
                             ) {
+                                // ---- Arquivo ----
+                                MenuSection("Arquivo")
+                                DropdownMenuItem(
+                                    text = { Text("Novo", color = gruvboxText) },
+                                    leadingIcon = { Icon(Icons.Default.Add, null, tint = gruvboxGray) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        documents.add(Document())
+                                        selectedIndex = documents.size - 1
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Abrir arquivo", color = gruvboxText) },
+                                    leadingIcon = { Icon(Icons.Default.FolderOpen, null, tint = gruvboxGray) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        openFileLauncher.launch(arrayOf("*/*"))
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Abrir pasta", color = gruvboxText) },
+                                    leadingIcon = { Icon(Icons.Default.Folder, null, tint = gruvboxGray) },
                                     onClick = {
                                         showExportMenu = false
                                         openTreeLauncher.launch(null)
                                     }
                                 )
                                 DropdownMenuItem(
+                                    text = { Text("Salvar", color = gruvboxText) },
+                                    leadingIcon = { Icon(Icons.Default.Save, null, tint = gruvboxGray) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        val uri = currentDoc.uri
+                                        if (uri != null && saveFile(uri, currentDoc.textState.text)) {
+                                            currentDoc.savedText = currentDoc.textState.text
+                                        } else {
+                                            saveAsLauncher.launch(currentDoc.name)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Salvar como…", color = gruvboxText) },
+                                    leadingIcon = { Icon(Icons.Default.SaveAs, null, tint = gruvboxGray) },
                                     onClick = {
                                         showExportMenu = false
                                         saveAsLauncher.launch(currentDoc.name)
                                     }
                                 )
+
                                 HorizontalDivider(color = gruvboxBg)
+                                // ---- Exportar ----
+                                MenuSection("Exportar")
                                 DropdownMenuItem(
                                     text = { Text("Exportar HTML", color = gruvboxText) },
                                     onClick = {
@@ -570,24 +589,12 @@ fun MarkEditorApp(
                                         exportPdfLauncher.launch(currentDoc.name.removeSuffix(".md") + ".pdf")
                                     }
                                 )
-                                HorizontalDivider(color = gruvboxBg)
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            if (autoSaveEnabled) "Auto-salvar: ligado" else "Auto-salvar: desligado",
-                                            color = if (autoSaveEnabled) gruvboxOrange else gruvboxGray
-                                        )
-                                    },
-                                    onClick = {
-                                        autoSaveEnabled = !autoSaveEnabled
-                                        appPrefs.edit().putBoolean("autosave", autoSaveEnabled).apply()
-                                        showExportMenu = false
-                                    }
-                                )
 
                                 HorizontalDivider(color = gruvboxBg)
+                                // ---- Aparência ----
+                                MenuSection("Aparência")
                                 DropdownMenuItem(
-                                    text = { Text("Fonte: ${fontSize.toInt()}", color = gruvboxText) },
+                                    text = { Text("Tamanho da fonte: ${fontSize.toInt()}", color = gruvboxText) },
                                     trailingIcon = {
                                         Row {
                                             IconButton(onClick = {
@@ -602,8 +609,6 @@ fun MarkEditorApp(
                                     },
                                     onClick = { }
                                 )
-
-                                HorizontalDivider(color = gruvboxBg)
                                 appPalettes.forEach { palette ->
                                     DropdownMenuItem(
                                         text = {
@@ -619,6 +624,23 @@ fun MarkEditorApp(
                                         }
                                     )
                                 }
+
+                                HorizontalDivider(color = gruvboxBg)
+                                // ---- Preferências ----
+                                MenuSection("Preferências")
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (autoSaveEnabled) "Auto-salvar: ligado" else "Auto-salvar: desligado",
+                                            color = if (autoSaveEnabled) gruvboxOrange else gruvboxGray
+                                        )
+                                    },
+                                    onClick = {
+                                        autoSaveEnabled = !autoSaveEnabled
+                                        appPrefs.edit().putBoolean("autosave", autoSaveEnabled).apply()
+                                        showExportMenu = false
+                                    }
+                                )
                             }
                         }
                     }
@@ -724,6 +746,7 @@ fun MarkEditorApp(
                 }
 
                 val editorPane: @Composable () -> Unit = {
+                    Surface(modifier = Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(12.dp), color = gruvboxSurface) {
                     Column(modifier = Modifier.fillMaxSize()) {
                     // Nova estrutura: Row fixa contendo a LazyRow rolável
                     Row(
@@ -815,6 +838,7 @@ fun MarkEditorApp(
                         )
                     }
                     }
+                    }
                 }
 
                 if (landscape) {
@@ -840,7 +864,7 @@ fun ToolBarIconButton(
     label: String = ""
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.background(if (enabled) Color(0xFF504945) else Color(0xFF3C3836), RoundedCornerShape(8.dp))) {
+        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.background(if (enabled) gruvboxButton else gruvboxButtonDisabled, RoundedCornerShape(8.dp))) {
             Icon(icon, contentDescription = label.ifEmpty { null }, tint = tint)
         }
         if (label.isNotEmpty()) {
@@ -850,9 +874,20 @@ fun ToolBarIconButton(
 }
 
 @Composable
+private fun MenuSection(title: String) {
+    Text(
+        text = title,
+        color = gruvboxOrange,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
 fun ToolBarButton(text: String, onClick: () -> Unit, label: String = "") {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        TextButton(onClick = onClick, modifier = Modifier.background(Color(0xFF504945), RoundedCornerShape(8.dp)), contentPadding = PaddingValues(horizontal = 12.dp)) {
+        TextButton(onClick = onClick, modifier = Modifier.background(gruvboxButton, RoundedCornerShape(8.dp)), contentPadding = PaddingValues(horizontal = 12.dp)) {
             Text(text, fontWeight = FontWeight.Bold, color = gruvboxText)
         }
         if (label.isNotEmpty()) {

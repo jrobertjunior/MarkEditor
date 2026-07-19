@@ -178,7 +178,7 @@ private fun LanguageChip(text: String, selected: Boolean, onClick: () -> Unit) {
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) gruvboxOrange else Color(0xFF504945))
+            .background(if (selected) gruvboxOrange else gruvboxButton)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp)
     )
