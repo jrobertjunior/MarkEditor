@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -143,60 +144,77 @@ fun MarkEditorApp(
 
     // Restaura a última sessão (abas, textos, aba ativa e posição do cursor).
     val restored = remember { SessionStore.load(context) }
-    val documents = remember {
-        mutableStateListOf<Document>().apply {
-            val docs = restored?.docs
-            if (!docs.isNullOrEmpty()) {
-                docs.forEach { d ->
-                    val len = d.text.length
-                    add(
-                        Document(
-                            name = d.name,
-                            uri = d.uri?.let { Uri.parse(it) },
-                            initialText = d.text,
-                            initialSelection = TextRange(
-                                d.selStart.coerceIn(0, len),
-                                d.selEnd.coerceIn(0, len)
-                            ),
-                            initialScrollIndex = d.scrollIndex,
-                            initialScrollOffset = d.scrollOffset
-                        )
-                    )
+    val tabs = remember {
+        // Reconstrói um Document a partir do snapshot persistido.
+        fun docOf(d: DocSnapshot): Document {
+            val len = d.text.length
+            return Document(
+                name = d.name,
+                uri = d.uri?.let { Uri.parse(it) },
+                initialText = d.text,
+                initialSelection = TextRange(
+                    d.selStart.coerceIn(0, len),
+                    d.selEnd.coerceIn(0, len)
+                ),
+                initialScrollIndex = d.scrollIndex,
+                initialScrollOffset = d.scrollOffset
+            )
+        }
+        mutableStateListOf<Tab>().apply {
+            val savedTabs = restored?.tabs
+            if (!savedTabs.isNullOrEmpty()) {
+                savedTabs.forEach { t ->
+                    if (t.type == "project" && t.parts.isNotEmpty()) {
+                        val pid = if (t.id.isNotBlank()) {
+                            try { java.util.UUID.fromString(t.id) } catch (e: Exception) { java.util.UUID.randomUUID() }
+                        } else java.util.UUID.randomUUID()
+                        val p = Project(id = pid, name = t.name, parts = t.parts.map { docOf(it) })
+                        p.activeIndex = t.activeIndex.coerceIn(0, p.parts.size - 1)
+                        add(p)
+                    } else {
+                        add(SingleTab(docOf(t.parts.firstOrNull() ?: DocSnapshot(t.name, null, "", 0, 0))))
+                    }
                 }
             } else {
-                add(Document())
+                add(SingleTab(Document()))
             }
         }
     }
     var selectedIndex by remember {
-        mutableIntStateOf((restored?.selectedIndex ?: 0).coerceIn(0, maxOf(0, documents.size - 1)))
+        mutableIntStateOf((restored?.selectedIndex ?: 0).coerceIn(0, maxOf(0, tabs.size - 1)))
     }
 
-    val safeIndex = selectedIndex.coerceIn(0, maxOf(0, documents.size - 1))
-    val currentDoc = documents[safeIndex]
+    val safeIndex = selectedIndex.coerceIn(0, maxOf(0, tabs.size - 1))
+    val currentTab = tabs[safeIndex]
+    val currentProject = currentTab as? Project
+    val currentDoc = currentTab.editable
 
     var isPreviewMode by remember { mutableStateOf(restored?.previewMode ?: false) }
     // Muda só quando o bloco visível no preview muda, para disparar o salvamento sem exagero.
     var scrollTick by remember { mutableIntStateOf(0) }
 
     // Salva a sessão automaticamente (com um pequeno atraso) sempre que algo muda.
-    LaunchedEffect(documents.size, selectedIndex, isPreviewMode, currentDoc.textState, currentDoc.name, scrollTick) {
+    LaunchedEffect(tabs.size, selectedIndex, isPreviewMode, currentDoc.textState, currentTab.title, scrollTick) {
         delay(400)
+        fun snap(d: Document) = DocSnapshot(
+            name = d.name,
+            uri = d.uri?.toString(),
+            text = d.textState.text,
+            selStart = d.textState.selection.start,
+            selEnd = d.textState.selection.end,
+            scrollIndex = d.previewScrollIndex,
+            scrollOffset = d.previewScrollOffset
+        )
         SessionStore.save(
             context,
             SessionSnapshot(
                 selectedIndex = safeIndex,
                 previewMode = isPreviewMode,
-                docs = documents.map { d ->
-                    DocSnapshot(
-                        name = d.name,
-                        uri = d.uri?.toString(),
-                        text = d.textState.text,
-                        selStart = d.textState.selection.start,
-                        selEnd = d.textState.selection.end,
-                        scrollIndex = d.previewScrollIndex,
-                        scrollOffset = d.previewScrollOffset
-                    )
+                tabs = tabs.map { t ->
+                    when (t) {
+                        is Project -> TabSnapshot("project", t.name, t.activeIndex, t.parts.map { snap(it) }, t.id.toString())
+                        is SingleTab -> TabSnapshot("single", t.doc.name, 0, listOf(snap(t.doc)))
+                    }
                 }
             )
         )
@@ -204,7 +222,7 @@ fun MarkEditorApp(
     var jumpToIndex by remember { mutableStateOf<Int?>(null) }
     val focusRequester = remember { FocusRequester() }
 
-    var showRenameDialog by remember { mutableStateOf<Document?>(null) }
+    var showRenameDialog by remember { mutableStateOf<Tab?>(null) }
     var newFileName by remember { mutableStateOf("") }
 
     var showLinkDialog by remember { mutableStateOf(false) }
@@ -229,8 +247,16 @@ fun MarkEditorApp(
     var fontSize by remember { mutableStateOf(appPrefs.getFloat("fontsize", 16f)) }
     var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
 
-    var showFolderDialog by remember { mutableStateOf(false) }
-    var folderFiles by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
+    // Rascunho do diálogo de projeto: arquivos (na ordem) + nome, antes de confirmar.
+    var showProjectDialog by remember { mutableStateOf(false) }
+    var projectDraft by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
+    var projectName by remember { mutableStateOf("Projeto") }
+    // Se != null, o diálogo está EDITANDO um projeto aberto; se null, está criando um novo.
+    var editingProject by remember { mutableStateOf<Project?>(null) }
+
+    // Diálogo "Abrir projeto" (lista de projetos salvos).
+    var showOpenProjectDialog by remember { mutableStateOf(false) }
+    var savedProjects by remember { mutableStateOf(ProjectStore.load(context)) }
 
     // Permissão de notificação (Android 13+) para a notificação de mídia da leitura.
     val notifPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -298,8 +324,8 @@ fun MarkEditorApp(
         persistUriPermission(uri)
         val fileName = getFileName(context, uri)
         val content = readFile(uri)
-        documents.add(Document(name = fileName, uri = uri, initialText = content))
-        selectedIndex = documents.size - 1
+        tabs.add(SingleTab(Document(name = fileName, uri = uri, initialText = content)))
+        selectedIndex = tabs.size - 1
         RecentFiles.add(appPrefs, uri.toString(), fileName)
         recents = RecentFiles.load(appPrefs)
     }
@@ -315,13 +341,29 @@ fun MarkEditorApp(
         onPendingOpenConsumed()
     }
 
-    val openTreeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-        treeUri?.let {
-            try {
-                context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (e: Exception) { /* segue mesmo sem permissão persistente */ }
-            folderFiles = listMarkdownInTree(context, it)
-            showFolderDialog = true
+    // Seleção múltipla para CRIAR um projeto: abre o diálogo de ordenação.
+    val openProjectFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            projectDraft = uris.map { u ->
+                persistUriPermission(u)
+                u to getFileName(context, u)
+            }
+            projectName = "Projeto"
+            editingProject = null
+            showProjectDialog = true
+        }
+    }
+
+    // Seleção múltipla para ADICIONAR arquivos ao rascunho atual (criar ou editar).
+    val addFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            val novos = uris.map { u ->
+                persistUriPermission(u)
+                u to getFileName(context, u)
+            }
+            // Evita duplicar arquivos já presentes no rascunho.
+            val existentes = projectDraft.map { it.first.toString() }.toSet()
+            projectDraft = projectDraft + novos.filterNot { it.first.toString() in existentes }
         }
     }
 
@@ -333,6 +375,86 @@ fun MarkEditorApp(
             currentDoc.name = getFileName(context, it)
             RecentFiles.add(appPrefs, it.toString(), currentDoc.name)
             recents = RecentFiles.load(appPrefs)
+        }
+    }
+
+    // Salva a aba atual. Projeto: grava cada parte no seu próprio arquivo.
+    // Arquivo único sem uri: abre "Salvar como…".
+    val saveCurrentTab = {
+        val proj = currentProject
+        if (proj != null) {
+            proj.parts.forEach { part ->
+                val u = part.uri
+                if (u != null && saveFile(u, part.textState.text)) part.savedText = part.textState.text
+            }
+        } else {
+            val uri = currentDoc.uri
+            if (uri != null && saveFile(uri, currentDoc.textState.text)) {
+                currentDoc.savedText = currentDoc.textState.text
+            } else {
+                saveAsLauncher.launch(currentDoc.name)
+            }
+        }
+    }
+
+    // Converte um projeto aberto na sua forma serializável (estrutura: nome + arquivos).
+    val savedOf = { project: Project ->
+        SavedProject(
+            id = project.id.toString(),
+            name = project.name,
+            files = project.parts.mapNotNull { p -> p.uri?.let { it.toString() to p.name } }
+        )
+    }
+
+    // Grava a estrutura de um projeto no armazenamento persistente (registro interno).
+    val persistProject = { project: Project ->
+        ProjectStore.upsert(context, savedOf(project))
+        savedProjects = ProjectStore.load(context)
+    }
+
+    // Qual projeto será gravado no arquivo .mdproj escolhido pelo usuário.
+    var projectToSaveFile by remember { mutableStateOf<Project?>(null) }
+
+    // Salvar projeto EM ARQUIVO (.mdproj) num local escolhido pelo usuário.
+    val saveProjectFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val proj = projectToSaveFile
+        if (uri != null && proj != null) {
+            try {
+                context.contentResolver.openOutputStream(uri, "wt")?.use { os ->
+                    os.write(ProjectStore.serialize(savedOf(proj)).toByteArray())
+                }
+            } catch (e: Exception) { /* ignora falha de gravação */ }
+        }
+        projectToSaveFile = null
+    }
+
+    // Abrir projeto DE UM ARQUIVO (.mdproj).
+    val openProjectFileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            val text = readFile(it)
+            val sp = ProjectStore.parse(text)
+            if (sp != null) {
+                val jaAberto = tabs.indexOfFirst { t -> t is Project && t.id.toString() == sp.id }
+                if (jaAberto >= 0) {
+                    selectedIndex = jaAberto
+                } else {
+                    val parts = sp.files.mapNotNull { (uriStr, fname) ->
+                        try {
+                            val u = Uri.parse(uriStr)
+                            Document(name = fname, uri = u, initialText = readFile(u))
+                        } catch (e: Exception) { null }
+                    }
+                    if (parts.isNotEmpty()) {
+                        val pid = try { java.util.UUID.fromString(sp.id) } catch (e: Exception) { java.util.UUID.randomUUID() }
+                        val proj = Project(id = pid, name = sp.name, parts = parts)
+                        tabs.add(proj)
+                        selectedIndex = tabs.size - 1
+                        isPreviewMode = false
+                        ProjectStore.upsert(context, sp.copy(id = pid.toString()))
+                        savedProjects = ProjectStore.load(context)
+                    }
+                }
+            }
         }
     }
 
@@ -367,10 +489,11 @@ fun MarkEditorApp(
         }
     }
 
-    showRenameDialog?.let { docToRename ->
+    showRenameDialog?.let { tabToRename ->
+        val isProject = tabToRename is Project
         AlertDialog(
             onDismissRequest = { showRenameDialog = null },
-            title = { Text("Renomear Arquivo", color = gruvboxText) },
+            title = { Text(if (isProject) "Renomear Projeto" else "Renomear Arquivo", color = gruvboxText) },
             containerColor = gruvboxSurface,
             textContentColor = gruvboxText,
             titleContentColor = gruvboxOrange,
@@ -388,7 +511,13 @@ fun MarkEditorApp(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    docToRename.name = if (newFileName.endsWith(".md")) newFileName else "$newFileName.md"
+                    when (tabToRename) {
+                        is Project -> {
+                            tabToRename.name = newFileName.ifBlank { "Projeto" }
+                            persistProject(tabToRename)
+                        }
+                        is SingleTab -> tabToRename.doc.name = if (newFileName.endsWith(".md")) newFileName else "$newFileName.md"
+                    }
                     showRenameDialog = null
                 }) { Text("Salvar", color = gruvboxOrange) }
             },
@@ -438,29 +567,156 @@ fun MarkEditorApp(
         )
     }
 
-    if (showFolderDialog) {
+    if (showProjectDialog) {
+        val editing = editingProject
         AlertDialog(
-            onDismissRequest = { showFolderDialog = false },
-            title = { Text("Arquivos da pasta", color = gruvboxOrange) },
+            onDismissRequest = { showProjectDialog = false },
+            title = { Text(if (editing != null) "Gerenciar projeto" else "Novo projeto", color = gruvboxOrange) },
             containerColor = gruvboxSurface,
             text = {
-                if (folderFiles.isEmpty()) {
-                    Text("Nenhum arquivo .md encontrado nesta pasta.", color = gruvboxGray)
-                } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
-                        items(folderFiles) { (fileUri, name) ->
-                            Box(modifier = Modifier.fillMaxWidth().clickable {
-                                openDocumentUri(fileUri)
-                                showFolderDialog = false
-                            }.padding(vertical = 12.dp, horizontal = 8.dp)) {
-                                Text(name, color = gruvboxText, maxLines = 1)
+                Column {
+                    TextField(
+                        value = projectName,
+                        onValueChange = { projectName = it },
+                        singleLine = true,
+                        label = { Text("Nome do projeto", color = gruvboxGray) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
+                            focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
+                            cursorColor = gruvboxOrange
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Ordem dos arquivos", color = gruvboxGray, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { addFilesLauncher.launch(arrayOf("*/*")) }) {
+                            Icon(Icons.Default.Add, null, tint = gruvboxOrange, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Adicionar", color = gruvboxOrange, fontSize = 13.sp)
+                        }
+                    }
+                    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        itemsIndexed(projectDraft) { index, (_, name) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("${index + 1}.", color = gruvboxOrange, modifier = Modifier.width(24.dp))
+                                Text(name, color = gruvboxText, maxLines = 1, modifier = Modifier.weight(1f))
+                                IconButton(
+                                    onClick = {
+                                        if (index > 0) projectDraft = projectDraft.toMutableList().also { it.add(index - 1, it.removeAt(index)) }
+                                    },
+                                    enabled = index > 0,
+                                    modifier = Modifier.size(32.dp)
+                                ) { Icon(Icons.Default.KeyboardArrowUp, "Subir", tint = if (index > 0) gruvboxText else gruvboxGray) }
+                                IconButton(
+                                    onClick = {
+                                        if (index < projectDraft.size - 1) projectDraft = projectDraft.toMutableList().also { it.add(index + 1, it.removeAt(index)) }
+                                    },
+                                    enabled = index < projectDraft.size - 1,
+                                    modifier = Modifier.size(32.dp)
+                                ) { Icon(Icons.Default.KeyboardArrowDown, "Descer", tint = if (index < projectDraft.size - 1) gruvboxText else gruvboxGray) }
+                                IconButton(
+                                    onClick = { projectDraft = projectDraft.toMutableList().also { it.removeAt(index) } },
+                                    modifier = Modifier.size(32.dp)
+                                ) { Icon(Icons.Default.Close, "Remover", tint = gruvboxGray) }
                             }
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showFolderDialog = false }) { Text("Fechar", color = gruvboxOrange) }
+                TextButton(
+                    enabled = projectDraft.isNotEmpty(),
+                    onClick = {
+                        val name = projectName.ifBlank { "Projeto" }
+                        if (editing != null) {
+                            // Reconcilia mantendo as partes existentes (com suas edições) e
+                            // criando Document novo só para arquivos recém-adicionados.
+                            val porUri = editing.parts.associateBy { it.uri?.toString() }
+                            val novasPartes = projectDraft.map { (u, fname) ->
+                                porUri[u.toString()] ?: Document(name = fname, uri = u, initialText = readFile(u))
+                            }
+                            editing.name = name
+                            editing.parts.clear()
+                            editing.parts.addAll(novasPartes)
+                            editing.activeIndex = editing.activeIndex.coerceIn(0, editing.parts.size - 1)
+                            persistProject(editing)
+                        } else {
+                            val parts = projectDraft.map { (u, fname) ->
+                                Document(name = fname, uri = u, initialText = readFile(u))
+                            }
+                            val proj = Project(name = name, parts = parts)
+                            tabs.add(proj)
+                            selectedIndex = tabs.size - 1
+                            isPreviewMode = false
+                            persistProject(proj)
+                        }
+                        editingProject = null
+                        showProjectDialog = false
+                    }
+                ) { Text(if (editing != null) "Salvar" else "Criar", color = if (projectDraft.isNotEmpty()) gruvboxOrange else gruvboxGray) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showProjectDialog = false; editingProject = null }) { Text("Cancelar", color = gruvboxGray) }
+            }
+        )
+    }
+
+    if (showOpenProjectDialog) {
+        AlertDialog(
+            onDismissRequest = { showOpenProjectDialog = false },
+            title = { Text("Abrir projeto", color = gruvboxOrange) },
+            containerColor = gruvboxSurface,
+            text = {
+                if (savedProjects.isEmpty()) {
+                    Text("Nenhum projeto salvo ainda.", color = gruvboxGray)
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                        items(savedProjects, key = { it.id }) { sp ->
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(
+                                    modifier = Modifier.weight(1f).clickable {
+                                        // Se já estiver aberto, apenas foca a aba.
+                                        val jaAberto = tabs.indexOfFirst { it is Project && it.id.toString() == sp.id }
+                                        if (jaAberto >= 0) {
+                                            selectedIndex = jaAberto
+                                        } else {
+                                            // Reabre o projeto lendo os arquivos atuais do disco.
+                                            val parts = sp.files.mapNotNull { (uriStr, fname) ->
+                                                try {
+                                                    val u = Uri.parse(uriStr)
+                                                    Document(name = fname, uri = u, initialText = readFile(u))
+                                                } catch (e: Exception) { null }
+                                            }
+                                            if (parts.isNotEmpty()) {
+                                                val pid = try { java.util.UUID.fromString(sp.id) } catch (e: Exception) { java.util.UUID.randomUUID() }
+                                                val proj = Project(id = pid, name = sp.name, parts = parts)
+                                                tabs.add(proj)
+                                                selectedIndex = tabs.size - 1
+                                                isPreviewMode = false
+                                            }
+                                        }
+                                        showOpenProjectDialog = false
+                                    }.padding(vertical = 8.dp, horizontal = 4.dp)
+                                ) {
+                                    Text(sp.name, color = gruvboxText, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text("${sp.files.size} arquivo(s)", color = gruvboxGray, fontSize = 12.sp)
+                                }
+                                IconButton(onClick = {
+                                    ProjectStore.delete(context, sp.id)
+                                    savedProjects = ProjectStore.load(context)
+                                }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Default.Delete, "Excluir projeto", tint = gruvboxGray)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOpenProjectDialog = false }) { Text("Fechar", color = gruvboxOrange) }
             }
         )
     }
@@ -471,7 +727,46 @@ fun MarkEditorApp(
             ModalDrawerSheet(drawerContainerColor = gruvboxBg, drawerContentColor = gruvboxText, modifier = Modifier.width(300.dp)) {
                 Text("Índice", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, color = gruvboxOrange, fontWeight = FontWeight.Bold)
                 HorizontalDivider(color = gruvboxSurface)
-                if (tocItems.isEmpty()) {
+                val indexProject = currentProject
+                if (indexProject != null) {
+                    // Projeto: cada arquivo é um capítulo de topo; seus títulos ficam aninhados.
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        indexProject.parts.forEachIndexed { partIndex, part ->
+                            item(key = "part-${part.id}") {
+                                val active = partIndex == indexProject.activeIndex
+                                Box(modifier = Modifier.fillMaxWidth().clickable {
+                                    if (isPreviewMode) {
+                                        jumpToIndex = indexProject.partStartOffset(partIndex)
+                                    } else {
+                                        indexProject.activeIndex = partIndex
+                                        part.textState = part.textState.copy(selection = TextRange(0))
+                                    }
+                                    coroutineScope.launch { drawerState.close(); if (!isPreviewMode) focusRequester.requestFocus() }
+                                }.background(if (active) gruvboxSurface else Color.Transparent).padding(vertical = 12.dp, horizontal = 12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Description, null, tint = gruvboxOrange, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(part.name, color = gruvboxOrange, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                    }
+                                }
+                            }
+                            val subItems = extractToc(part.textState.text)
+                            items(subItems, key = { "sub-${part.id}-${it.index}" }) { item ->
+                                Box(modifier = Modifier.fillMaxWidth().clickable {
+                                    if (isPreviewMode) {
+                                        jumpToIndex = indexProject.partStartOffset(partIndex) + item.index
+                                    } else {
+                                        indexProject.activeIndex = partIndex
+                                        part.textState = part.textState.copy(selection = TextRange(item.index.coerceIn(0, part.textState.text.length)))
+                                    }
+                                    coroutineScope.launch { drawerState.close(); if (!isPreviewMode) focusRequester.requestFocus() }
+                                }.padding(vertical = 10.dp, horizontal = 16.dp).padding(start = (12 + (item.level - 1) * 16).dp)) {
+                                    Text(item.label, color = gruvboxText, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                } else if (tocItems.isEmpty()) {
                     Text("Nenhum capítulo encontrado.", modifier = Modifier.padding(16.dp), color = gruvboxGray)
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -505,16 +800,9 @@ fun MarkEditorApp(
                         IconButton(onClick = { currentDoc.undoRedoManager.redo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canRedo) {
                             Icon(Icons.Default.Redo, "Refazer", tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray)
                         }
-                        IconButton(onClick = {
-                            val uri = currentDoc.uri
-                            if (uri != null && saveFile(uri, currentDoc.textState.text)) {
-                                currentDoc.savedText = currentDoc.textState.text
-                            } else {
-                                saveAsLauncher.launch(currentDoc.name)
-                            }
-                        }) { Icon(Icons.Default.Save, "Salvar", tint = gruvboxText) }
+                        IconButton(onClick = { saveCurrentTab() }) { Icon(Icons.Default.Save, "Salvar", tint = gruvboxText) }
                         IconButton(onClick = { openFileLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.FolderOpen, "Abrir arquivo", tint = gruvboxText) }
-                        IconButton(onClick = { openTreeLauncher.launch(null) }) { Icon(Icons.Default.Folder, "Abrir pasta", tint = gruvboxText) }
+                        IconButton(onClick = { openProjectFilesLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.LibraryBooks, "Novo projeto", tint = gruvboxText) }
 
                         IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, "Alternar", tint = gruvboxText) }
 
@@ -588,8 +876,8 @@ fun MarkEditorApp(
                                             leadingIcon = { Icon(Icons.Default.Add, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
-                                                documents.add(Document())
-                                                selectedIndex = documents.size - 1
+                                                tabs.add(SingleTab(Document()))
+                                                selectedIndex = tabs.size - 1
                                             }
                                         )
                                         DropdownMenuItem(
@@ -601,11 +889,40 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Abrir pasta", color = gruvboxText) },
-                                            leadingIcon = { Icon(Icons.Default.Folder, null, tint = gruvboxGray) },
+                                            text = { Text("Novo projeto", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.LibraryBooks, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
-                                                openTreeLauncher.launch(null)
+                                                openProjectFilesLauncher.launch(arrayOf("*/*"))
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Abrir projeto", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.FolderSpecial, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                savedProjects = ProjectStore.load(context)
+                                                showOpenProjectDialog = true
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Abrir projeto de arquivo…", color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.FileOpen, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                openProjectFileLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Salvar projeto em disco…", color = if (currentProject != null) gruvboxText else gruvboxGray) },
+                                            leadingIcon = { Icon(Icons.Default.SaveAs, null, tint = gruvboxGray) },
+                                            enabled = currentProject != null,
+                                            onClick = {
+                                                showExportMenu = false
+                                                currentProject?.let { proj ->
+                                                    projectToSaveFile = proj
+                                                    saveProjectFileLauncher.launch(proj.name.replace(Regex("[^A-Za-z0-9-_ ]"), "").ifBlank { "projeto" } + ".mdproj")
+                                                }
                                             }
                                         )
                                         DropdownMenuItem(
@@ -619,12 +936,7 @@ fun MarkEditorApp(
                                             leadingIcon = { Icon(Icons.Default.Save, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
-                                                val uri = currentDoc.uri
-                                                if (uri != null && saveFile(uri, currentDoc.textState.text)) {
-                                                    currentDoc.savedText = currentDoc.textState.text
-                                                } else {
-                                                    saveAsLauncher.launch(currentDoc.name)
-                                                }
+                                                saveCurrentTab()
                                             }
                                         )
                                         DropdownMenuItem(
@@ -727,18 +1039,23 @@ fun MarkEditorApp(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                 ) {
-                    documents.forEachIndexed { index, doc ->
+                    tabs.forEachIndexed { index, tab ->
                         Tab(
                             selected = safeIndex == index,
                             onClick = { selectedIndex = index },
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (doc.isDirty) {
+                                    if (tab.dirty) {
                                         Box(modifier = Modifier.size(7.dp).background(gruvboxYellow, CircleShape))
                                         Spacer(modifier = Modifier.width(6.dp))
                                     }
+                                    // Projetos ganham um ícone para se distinguir de arquivos soltos.
+                                    if (tab is Project) {
+                                        Icon(Icons.Default.LibraryBooks, "Projeto", tint = if (safeIndex == index) gruvboxOrange else gruvboxGray, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
                                     Text(
-                                        text = doc.name,
+                                        text = tab.title,
                                         color = if (safeIndex == index) gruvboxOrange else gruvboxText,
                                         fontWeight = if (safeIndex == index) FontWeight.Bold else FontWeight.Normal
                                     )
@@ -746,8 +1063,8 @@ fun MarkEditorApp(
                                     if (safeIndex == index) {
                                         IconButton(
                                             onClick = {
-                                                newFileName = doc.name.removeSuffix(".md")
-                                                showRenameDialog = doc
+                                                newFileName = if (tab is Project) tab.name else tab.title.removeSuffix(".md")
+                                                showRenameDialog = tab
                                             },
                                             modifier = Modifier.size(24.dp).padding(start = 4.dp)
                                         ) {
@@ -759,11 +1076,11 @@ fun MarkEditorApp(
 
                                     IconButton(
                                         onClick = {
-                                            documents.removeAt(index)
-                                            if (documents.isEmpty()) {
-                                                documents.add(Document())
+                                            tabs.removeAt(index)
+                                            if (tabs.isEmpty()) {
+                                                tabs.add(SingleTab(Document()))
                                             }
-                                            selectedIndex = selectedIndex.coerceIn(0, documents.size - 1)
+                                            selectedIndex = selectedIndex.coerceIn(0, tabs.size - 1)
                                         },
                                         modifier = Modifier.size(16.dp)
                                     ) {
@@ -783,27 +1100,50 @@ fun MarkEditorApp(
                 val previewPane: @Composable () -> Unit = {
                     Surface(modifier = Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(12.dp), color = gruvboxSurface) {
                         // key() garante estado de scroll/seleção/leitura próprio para cada aba.
-                        key(currentDoc.id) {
-                            MarkdownPreview(
-                                text = currentDoc.textState.text,
-                                onTextChange = { newText ->
-                                    updateTextState(TextFieldValue(text = newText, selection = TextRange(newText.length)))
-                                },
-                                jumpToIndex = jumpToIndex,
-                                onJumpConsumed = { jumpToIndex = null },
-                                initialScrollIndex = currentDoc.previewScrollIndex,
-                                initialScrollOffset = currentDoc.previewScrollOffset,
-                                onScrollChanged = { i, o ->
-                                    if (currentDoc.previewScrollIndex != i) scrollTick++
-                                    currentDoc.previewScrollIndex = i
-                                    currentDoc.previewScrollOffset = o
-                                },
-                                startReadingFromOffset = readFromOffset,
-                                onStartReadingConsumed = { readFromOffset = null },
-                                fontSize = fontSize,
-                                documentTitle = currentDoc.name,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                        // Projeto: mostra o texto de todas as partes concatenado (lê como um só).
+                        val project = currentProject
+                        key(currentTab.id) {
+                            if (project != null) {
+                                MarkdownPreview(
+                                    text = project.combinedText(),
+                                    onTextChange = { newText -> project.applyCombinedEdit(newText) },
+                                    jumpToIndex = jumpToIndex,
+                                    onJumpConsumed = { jumpToIndex = null },
+                                    initialScrollIndex = project.previewScrollIndex,
+                                    initialScrollOffset = project.previewScrollOffset,
+                                    onScrollChanged = { i, o ->
+                                        if (project.previewScrollIndex != i) scrollTick++
+                                        project.previewScrollIndex = i
+                                        project.previewScrollOffset = o
+                                    },
+                                    startReadingFromOffset = readFromOffset,
+                                    onStartReadingConsumed = { readFromOffset = null },
+                                    fontSize = fontSize,
+                                    documentTitle = project.name,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                MarkdownPreview(
+                                    text = currentDoc.textState.text,
+                                    onTextChange = { newText ->
+                                        updateTextState(TextFieldValue(text = newText, selection = TextRange(newText.length)))
+                                    },
+                                    jumpToIndex = jumpToIndex,
+                                    onJumpConsumed = { jumpToIndex = null },
+                                    initialScrollIndex = currentDoc.previewScrollIndex,
+                                    initialScrollOffset = currentDoc.previewScrollOffset,
+                                    onScrollChanged = { i, o ->
+                                        if (currentDoc.previewScrollIndex != i) scrollTick++
+                                        currentDoc.previewScrollIndex = i
+                                        currentDoc.previewScrollOffset = o
+                                    },
+                                    startReadingFromOffset = readFromOffset,
+                                    onStartReadingConsumed = { readFromOffset = null },
+                                    fontSize = fontSize,
+                                    documentTitle = currentDoc.name,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         }
                     }
                 }
@@ -811,6 +1151,38 @@ fun MarkEditorApp(
                 val editorPane: @Composable () -> Unit = {
                     Surface(modifier = Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(12.dp), color = gruvboxSurface) {
                     Column(modifier = Modifier.fillMaxSize()) {
+                    // Projeto: cabeçalho mostrando qual arquivo (parte) está sendo editado, com navegação.
+                    currentProject?.let { project ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().background(gruvboxBg).padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { if (project.activeIndex > 0) project.activeIndex-- },
+                                enabled = project.activeIndex > 0,
+                                modifier = Modifier.size(32.dp)
+                            ) { Icon(Icons.Default.KeyboardArrowUp, "Parte anterior", tint = if (project.activeIndex > 0) gruvboxText else gruvboxGray) }
+                            Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                                Text("Parte ${project.activeIndex + 1}/${project.parts.size}", color = gruvboxGray, fontSize = 11.sp)
+                                Text(project.editable.name, color = gruvboxOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                            IconButton(
+                                onClick = { if (project.activeIndex < project.parts.size - 1) project.activeIndex++ },
+                                enabled = project.activeIndex < project.parts.size - 1,
+                                modifier = Modifier.size(32.dp)
+                            ) { Icon(Icons.Default.KeyboardArrowDown, "Próxima parte", tint = if (project.activeIndex < project.parts.size - 1) gruvboxText else gruvboxGray) }
+                            // Gerenciar: adicionar/remover/reordenar arquivos do projeto.
+                            IconButton(
+                                onClick = {
+                                    projectName = project.name
+                                    projectDraft = project.parts.mapNotNull { p -> p.uri?.let { it to p.name } }
+                                    editingProject = project
+                                    showProjectDialog = true
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) { Icon(Icons.Default.Tune, "Gerenciar projeto", tint = gruvboxOrange) }
+                        }
+                    }
                     // Nova estrutura: Row fixa contendo a LazyRow rolável
                     Row(
                         modifier = Modifier
