@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,13 +46,13 @@ fun TtsSettingsDialog(tts: TtsManager, onDismiss: () -> Unit) {
         containerColor = gruvboxSurface,
         titleContentColor = gruvboxOrange,
         textContentColor = gruvboxText,
-        title = { Text("Configurações de leitura") },
+        title = { Text(stringResource(R.string.tts_settings_title)) },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Fechar", color = gruvboxOrange) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close), color = gruvboxOrange) }
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                SectionLabel("Velocidade")
+                SectionLabel(stringResource(R.string.tts_speed))
                 Slider(
                     value = tts.speechRate,
                     onValueChange = { tts.updateSpeechRate(it) },
@@ -64,7 +65,7 @@ fun TtsSettingsDialog(tts: TtsManager, onDismiss: () -> Unit) {
                 )
                 Text("${"%.1f".format(tts.speechRate)}x", color = gruvboxGray, fontSize = 12.sp)
 
-                SectionLabel("Tom")
+                SectionLabel(stringResource(R.string.tts_pitch))
                 Slider(
                     value = tts.pitch,
                     onValueChange = { tts.updatePitch(it) },
@@ -77,10 +78,16 @@ fun TtsSettingsDialog(tts: TtsManager, onDismiss: () -> Unit) {
                 )
                 Text("%.1f".format(tts.pitch), color = gruvboxGray, fontSize = 12.sp)
 
-                SectionLabel("Timer de soneca")
+                SectionLabel(stringResource(R.string.tts_sleep_timer))
+                val sleepOpts = listOf(
+                    0 to stringResource(R.string.tts_off),
+                    5 to stringResource(R.string.tts_minutes, 5),
+                    10 to stringResource(R.string.tts_minutes, 10),
+                    15 to stringResource(R.string.tts_minutes, 15),
+                    30 to stringResource(R.string.tts_minutes, 30)
+                )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val opts = listOf(0 to "Desligado", 5 to "5 min", 10 to "10 min", 15 to "15 min", 30 to "30 min")
-                    items(opts) { (minutes, label) ->
+                    items(sleepOpts) { (minutes, label) ->
                         LanguageChip(
                             text = label,
                             selected = tts.sleepTimerMinutes == minutes,
@@ -93,15 +100,15 @@ fun TtsSettingsDialog(tts: TtsManager, onDismiss: () -> Unit) {
                 TextButton(onClick = { tts.previewVoice() }) {
                     Icon(Icons.Default.PlayCircle, contentDescription = null, tint = gruvboxOrange)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Testar voz", color = gruvboxOrange)
+                    Text(stringResource(R.string.tts_test_voice), color = gruvboxOrange)
                 }
 
                 HorizontalDivider(color = gruvboxBg)
                 Spacer(modifier = Modifier.padding(4.dp))
 
-                SectionLabel("Motor")
+                SectionLabel(stringResource(R.string.tts_engine))
                 if (tts.engineOptions.isEmpty()) {
-                    Text("Carregando…", color = gruvboxGray, fontSize = 13.sp)
+                    Text(stringResource(R.string.tts_loading), color = gruvboxGray, fontSize = 13.sp)
                 } else {
                     tts.engineOptions.forEach { engine ->
                         SelectableRow(
@@ -117,14 +124,14 @@ fun TtsSettingsDialog(tts: TtsManager, onDismiss: () -> Unit) {
                 HorizontalDivider(color = gruvboxBg)
                 Spacer(modifier = Modifier.padding(4.dp))
 
-                SectionLabel("Idioma")
+                SectionLabel(stringResource(R.string.tts_language))
                 if (tts.voiceLanguages.isEmpty()) {
                     Text("—", color = gruvboxGray, fontSize = 13.sp)
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         item {
                             LanguageChip(
-                                text = "Todos",
+                                text = stringResource(R.string.tts_all),
                                 selected = tts.selectedLanguage == null,
                                 onClick = { tts.setLanguageFilter(null) }
                             )
@@ -141,9 +148,9 @@ fun TtsSettingsDialog(tts: TtsManager, onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.padding(3.dp))
 
-                SectionLabel("Voz")
+                SectionLabel(stringResource(R.string.tts_voice))
                 if (tts.voiceOptions.isEmpty()) {
-                    Text("Nenhuma voz para este filtro.", color = gruvboxGray, fontSize = 13.sp)
+                    Text(stringResource(R.string.tts_no_voice), color = gruvboxGray, fontSize = 13.sp)
                 } else {
                     tts.voiceOptions.forEach { voice ->
                         SelectableRow(

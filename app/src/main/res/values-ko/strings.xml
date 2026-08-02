@@ -1,0 +1,131 @@
+<resources>
+    <string name="default_file_name">새 파일.md</string>
+    <string name="default_file_content"># 새 파일\n\n입력을 시작하세요…</string>
+    <string name="unknown_file">알 수 없음.md</string>
+    <string name="project_default_name">프로젝트</string>
+
+    <string name="action_save">저장</string>
+    <string name="action_cancel">취소</string>
+    <string name="action_close">닫기</string>
+    <string name="action_insert">삽입</string>
+    <string name="action_create">만들기</string>
+    <string name="action_add">추가</string>
+    <string name="action_back">뒤로</string>
+
+    <string name="rename_project_title">프로젝트 이름 변경</string>
+    <string name="rename_file_title">파일 이름 변경</string>
+
+    <string name="link_dialog_title">링크 삽입</string>
+    <string name="link_text_label">텍스트</string>
+    <string name="link_url_label">URL</string>
+    <string name="link_default_label">링크</string>
+
+    <string name="project_new_title">새 프로젝트</string>
+    <string name="project_manage_title">프로젝트 관리</string>
+    <string name="project_name_label">프로젝트 이름</string>
+    <string name="project_files_order">파일 순서</string>
+    <string name="move_up">위로</string>
+    <string name="move_down">아래로</string>
+    <string name="remove">제거</string>
+    <string name="open_project_title">프로젝트 열기</string>
+    <string name="no_saved_projects">저장된 프로젝트가 없습니다.</string>
+    <string name="files_count">파일 %d개</string>
+    <string name="delete_project">프로젝트 삭제</string>
+
+    <string name="index_title">목차</string>
+    <string name="no_chapters">챕터를 찾을 수 없습니다.</string>
+
+    <string name="cd_undo">실행 취소</string>
+    <string name="cd_redo">다시 실행</string>
+    <string name="cd_open_file">파일 열기</string>
+    <string name="cd_split">나란히 보기</string>
+    <string name="cd_toggle">전환</string>
+    <string name="cd_menu">메뉴</string>
+    <string name="cd_project">프로젝트</string>
+    <string name="cd_rename">이름 변경</string>
+
+    <string name="menu_themes">테마</string>
+    <string name="menu_recents">최근 항목</string>
+    <string name="no_recent_files">최근 파일 없음</string>
+    <string name="section_file">파일</string>
+    <string name="menu_new">새로 만들기</string>
+    <string name="menu_open_project_file">파일에서 프로젝트 열기…</string>
+    <string name="menu_save_project_disk">프로젝트를 디스크에 저장…</string>
+    <string name="menu_save_as">다른 이름으로 저장…</string>
+    <string name="section_export">내보내기</string>
+    <string name="export_html">HTML 내보내기</string>
+    <string name="export_pdf">PDF 내보내기</string>
+    <string name="section_appearance">모양</string>
+    <string name="font_size">글꼴 크기: %d</string>
+    <string name="decrease">축소</string>
+    <string name="increase">확대</string>
+    <string name="theme_label">테마: %s</string>
+    <string name="section_preferences">환경설정</string>
+    <string name="autosave_on">자동 저장: 켜짐</string>
+    <string name="autosave_off">자동 저장: 꺼짐</string>
+    <string name="menu_language">언어</string>
+    <string name="language_system">시스템 기본값</string>
+
+    <string name="tb_title1">제목 1</string>
+    <string name="tb_title2">제목 2</string>
+    <string name="tb_title3">제목 3</string>
+    <string name="tb_bold">굵게</string>
+    <string name="tb_italic">기울임</string>
+    <string name="tb_strikethrough">취소선</string>
+    <string name="tb_quote">인용</string>
+    <string name="tb_code">코드</string>
+    <string name="tb_list">목록</string>
+    <string name="tb_numbered">번호 목록</string>
+    <string name="tb_task">할 일</string>
+    <string name="tb_link">링크</string>
+    <string name="tb_rule">구분선</string>
+    <string name="tb_comment">주석</string>
+    <string name="comment_snippet">&lt;!-- 주석 --&gt;</string>
+    <string name="tb_diagram">다이어그램</string>
+    <string name="tb_formula">수식</string>
+    <string name="tb_read_from_here">여기부터 읽기</string>
+
+    <string name="part_indicator">%2$d개 중 %1$d번째</string>
+    <string name="prev_part">이전 부분</string>
+    <string name="next_part">다음 부분</string>
+    <string name="manage_project">프로젝트 관리</string>
+    <string name="status_words_chars">%1$d단어 · %2$d자</string>
+    <string name="status_reading_time"> · 약 %d분</string>
+
+    <string name="percent_read">%d%% 읽음</string>
+    <string name="minutes_left">약 %d분 남음</string>
+    <string name="prev_section">이전 섹션</string>
+    <string name="pause">일시정지</string>
+    <string name="resume">계속</string>
+    <string name="read_aloud">소리 내어 읽기</string>
+    <string name="next_section">다음 섹션</string>
+    <string name="stop_reading">읽기 중지</string>
+    <string name="reading">읽는 중…</string>
+    <string name="paused">일시정지됨</string>
+    <string name="choose_voice">음성 및 엔진 선택</string>
+    <string name="finish_edit">편집 완료</string>
+    <string name="document_default">문서</string>
+
+    <string name="tts_settings_title">읽기 설정</string>
+    <string name="tts_speed">속도</string>
+    <string name="tts_pitch">음높이</string>
+    <string name="tts_sleep_timer">취침 타이머</string>
+    <string name="tts_off">끄기</string>
+    <string name="tts_minutes">%d분</string>
+    <string name="tts_test_voice">음성 테스트</string>
+    <string name="tts_engine">엔진</string>
+    <string name="tts_loading">불러오는 중…</string>
+    <string name="tts_language">언어</string>
+    <string name="tts_all">전체</string>
+    <string name="tts_voice">음성</string>
+    <string name="tts_no_voice">이 필터에 맞는 음성이 없습니다.</string>
+
+    <string name="notif_pause">일시정지</string>
+    <string name="notif_play">재생</string>
+    <string name="notif_reading">소리 내어 읽는 중</string>
+    <string name="notif_paused">일시정지됨</string>
+    <string name="notif_prev">이전</string>
+    <string name="notif_next">다음</string>
+    <string name="notif_stop">중지</string>
+    <string name="notif_channel">소리 내어 읽기</string>
+</resources>

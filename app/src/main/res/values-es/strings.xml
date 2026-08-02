@@ -1,0 +1,131 @@
+<resources>
+    <string name="default_file_name">Nuevo archivo.md</string>
+    <string name="default_file_content"># Nuevo archivo\n\nEmpieza a escribir…</string>
+    <string name="unknown_file">Desconocido.md</string>
+    <string name="project_default_name">Proyecto</string>
+
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="action_insert">Insertar</string>
+    <string name="action_create">Crear</string>
+    <string name="action_add">Añadir</string>
+    <string name="action_back">Atrás</string>
+
+    <string name="rename_project_title">Renombrar proyecto</string>
+    <string name="rename_file_title">Renombrar archivo</string>
+
+    <string name="link_dialog_title">Insertar enlace</string>
+    <string name="link_text_label">Texto</string>
+    <string name="link_url_label">URL</string>
+    <string name="link_default_label">enlace</string>
+
+    <string name="project_new_title">Nuevo proyecto</string>
+    <string name="project_manage_title">Gestionar proyecto</string>
+    <string name="project_name_label">Nombre del proyecto</string>
+    <string name="project_files_order">Orden de los archivos</string>
+    <string name="move_up">Subir</string>
+    <string name="move_down">Bajar</string>
+    <string name="remove">Quitar</string>
+    <string name="open_project_title">Abrir proyecto</string>
+    <string name="no_saved_projects">Aún no hay proyectos guardados.</string>
+    <string name="files_count">%d archivo(s)</string>
+    <string name="delete_project">Eliminar proyecto</string>
+
+    <string name="index_title">Índice</string>
+    <string name="no_chapters">No se encontraron capítulos.</string>
+
+    <string name="cd_undo">Deshacer</string>
+    <string name="cd_redo">Rehacer</string>
+    <string name="cd_open_file">Abrir archivo</string>
+    <string name="cd_split">Lado a lado</string>
+    <string name="cd_toggle">Alternar</string>
+    <string name="cd_menu">Menú</string>
+    <string name="cd_project">Proyecto</string>
+    <string name="cd_rename">Renombrar</string>
+
+    <string name="menu_themes">Temas</string>
+    <string name="menu_recents">Recientes</string>
+    <string name="no_recent_files">No hay archivos recientes</string>
+    <string name="section_file">Archivo</string>
+    <string name="menu_new">Nuevo</string>
+    <string name="menu_open_project_file">Abrir proyecto desde archivo…</string>
+    <string name="menu_save_project_disk">Guardar proyecto en disco…</string>
+    <string name="menu_save_as">Guardar como…</string>
+    <string name="section_export">Exportar</string>
+    <string name="export_html">Exportar HTML</string>
+    <string name="export_pdf">Exportar PDF</string>
+    <string name="section_appearance">Apariencia</string>
+    <string name="font_size">Tamaño de fuente: %d</string>
+    <string name="decrease">Reducir</string>
+    <string name="increase">Aumentar</string>
+    <string name="theme_label">Tema: %s</string>
+    <string name="section_preferences">Preferencias</string>
+    <string name="autosave_on">Autoguardado: activado</string>
+    <string name="autosave_off">Autoguardado: desactivado</string>
+    <string name="menu_language">Idioma</string>
+    <string name="language_system">Predeterminado del sistema</string>
+
+    <string name="tb_title1">Título 1</string>
+    <string name="tb_title2">Título 2</string>
+    <string name="tb_title3">Título 3</string>
+    <string name="tb_bold">Negrita</string>
+    <string name="tb_italic">Cursiva</string>
+    <string name="tb_strikethrough">Tachado</string>
+    <string name="tb_quote">Cita</string>
+    <string name="tb_code">Código</string>
+    <string name="tb_list">Lista</string>
+    <string name="tb_numbered">Numerada</string>
+    <string name="tb_task">Tarea</string>
+    <string name="tb_link">Enlace</string>
+    <string name="tb_rule">Línea</string>
+    <string name="tb_comment">Comentario</string>
+    <string name="comment_snippet">&lt;!-- comentario --&gt;</string>
+    <string name="tb_diagram">Diagrama</string>
+    <string name="tb_formula">Fórmula</string>
+    <string name="tb_read_from_here">Leer desde aquí</string>
+
+    <string name="part_indicator">Parte %1$d/%2$d</string>
+    <string name="prev_part">Parte anterior</string>
+    <string name="next_part">Parte siguiente</string>
+    <string name="manage_project">Gestionar proyecto</string>
+    <string name="status_words_chars">%1$d palabras · %2$d car.</string>
+    <string name="status_reading_time"> · ~%d min</string>
+
+    <string name="percent_read">%d%% leído</string>
+    <string name="minutes_left">~%d min restantes</string>
+    <string name="prev_section">Sección anterior</string>
+    <string name="pause">Pausar</string>
+    <string name="resume">Reanudar</string>
+    <string name="read_aloud">Leer en voz alta</string>
+    <string name="next_section">Sección siguiente</string>
+    <string name="stop_reading">Detener lectura</string>
+    <string name="reading">Leyendo…</string>
+    <string name="paused">En pausa</string>
+    <string name="choose_voice">Elegir voz y motor</string>
+    <string name="finish_edit">Terminar edición</string>
+    <string name="document_default">Documento</string>
+
+    <string name="tts_settings_title">Ajustes de lectura</string>
+    <string name="tts_speed">Velocidad</string>
+    <string name="tts_pitch">Tono</string>
+    <string name="tts_sleep_timer">Temporizador</string>
+    <string name="tts_off">Desactivado</string>
+    <string name="tts_minutes">%d min</string>
+    <string name="tts_test_voice">Probar voz</string>
+    <string name="tts_engine">Motor</string>
+    <string name="tts_loading">Cargando…</string>
+    <string name="tts_language">Idioma</string>
+    <string name="tts_all">Todos</string>
+    <string name="tts_voice">Voz</string>
+    <string name="tts_no_voice">No hay voz para este filtro.</string>
+
+    <string name="notif_pause">Pausar</string>
+    <string name="notif_play">Reproducir</string>
+    <string name="notif_reading">Leyendo en voz alta</string>
+    <string name="notif_paused">En pausa</string>
+    <string name="notif_prev">Anterior</string>
+    <string name="notif_next">Siguiente</string>
+    <string name="notif_stop">Detener</string>
+    <string name="notif_channel">Lectura en voz alta</string>
+</resources>

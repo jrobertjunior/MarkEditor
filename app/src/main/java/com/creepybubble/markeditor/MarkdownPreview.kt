@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
@@ -101,6 +102,10 @@ fun MarkdownPreview(
     onStartReadingConsumed: () -> Unit = {},
     fontSize: Float = 16f,
     documentTitle: String = "Documento",
+    // Sincronização de rolagem (modo lado a lado): recebe uma fração 0..1 para rolar até,
+    // e reporta a própria fração conforme o usuário rola (com flag de "rolando agora").
+    externalScrollFraction: Float? = null,
+    onScrollFraction: (Float, Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -169,6 +174,30 @@ fun MarkdownPreview(
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
             .collect { (i, o) -> onScrollChanged(i, o) }
+    }
+
+    // Sincronização (lado a lado): rola até a fração pedida pelo editor.
+    LaunchedEffect(externalScrollFraction) {
+        val f = externalScrollFraction ?: return@LaunchedEffect
+        if (blocks.isNotEmpty() && !listState.isScrollInProgress) {
+            val pos = f * blocks.size
+            val idx = pos.toInt().coerceIn(0, blocks.size - 1)
+            listState.scrollToItem(idx)
+        }
+    }
+
+    // Sincronização (lado a lado): reporta a própria fração de rolagem.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val total = blocks.size
+            val frac = if (total <= 0) 0f else {
+                val idx = listState.firstVisibleItemIndex
+                val itemH = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == idx }?.size ?: 0
+                val intra = if (itemH > 0) listState.firstVisibleItemScrollOffset.toFloat() / itemH else 0f
+                ((idx + intra) / total).coerceIn(0f, 1f)
+            }
+            frac to listState.isScrollInProgress
+        }.collect { (frac, inProg) -> onScrollFraction(frac, inProg) }
     }
 
     // "Ler a partir do cursor": rola até o bloco e começa a leitura ali.
@@ -350,9 +379,9 @@ private fun ReadingProgressBar(fraction: Float, wordsLeft: Int, totalWords: Int)
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("$percent% lido", color = gruvboxGray, fontSize = 12.sp)
+            Text(stringResource(R.string.percent_read, percent), color = gruvboxGray, fontSize = 12.sp)
             Text(
-                text = if (totalWords <= 0) "" else "~$minutesLeft min restantes",
+                text = if (totalWords <= 0) "" else stringResource(R.string.minutes_left, minutesLeft),
                 color = gruvboxGray,
                 fontSize = 12.sp
             )
@@ -381,29 +410,29 @@ private fun TtsControlBar(
     ) {
         TtsButton(
             icon = Icons.Default.SkipPrevious,
-            description = "Seção anterior",
+            description = stringResource(R.string.prev_section),
             enabled = active,
             onClick = onPrevious
         )
         TtsButton(
             icon = if (isSpeaking) Icons.Default.Pause else Icons.Default.PlayArrow,
             description = when {
-                isSpeaking -> "Pausar"
-                isPaused -> "Retomar"
-                else -> "Ler em voz alta"
+                isSpeaking -> stringResource(R.string.pause)
+                isPaused -> stringResource(R.string.resume)
+                else -> stringResource(R.string.read_aloud)
             },
             tint = if (active) gruvboxOrange else gruvboxText,
             onClick = onPlayPause
         )
         TtsButton(
             icon = Icons.Default.SkipNext,
-            description = "Próxima seção",
+            description = stringResource(R.string.next_section),
             enabled = active,
             onClick = onNext
         )
         TtsButton(
             icon = Icons.Default.Stop,
-            description = "Parar leitura",
+            description = stringResource(R.string.stop_reading),
             enabled = active,
             tint = if (active) gruvboxRed else gruvboxGray,
             onClick = onStop
@@ -412,9 +441,9 @@ private fun TtsControlBar(
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = when {
-                isSpeaking -> "Lendo…"
-                isPaused -> "Pausado"
-                else -> "Ler em voz alta"
+                isSpeaking -> stringResource(R.string.reading)
+                isPaused -> stringResource(R.string.paused)
+                else -> stringResource(R.string.read_aloud)
             },
             color = if (active) gruvboxOrange else gruvboxGray,
             fontSize = 14.sp,
@@ -423,7 +452,7 @@ private fun TtsControlBar(
 
         TtsButton(
             icon = Icons.Default.Tune,
-            description = "Escolher voz e motor",
+            description = stringResource(R.string.choose_voice),
             onClick = onOpenSettings
         )
     }
@@ -723,7 +752,7 @@ private fun BlockEditField(initial: String, fontSize: Float, onCommit: (String) 
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { onCommit(value.text) }, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Check, contentDescription = "Concluir edição", tint = gruvboxLilac)
+                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.finish_edit), tint = gruvboxLilac)
             }
         }
     }

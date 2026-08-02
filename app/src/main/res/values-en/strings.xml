@@ -1,0 +1,131 @@
+<resources>
+    <string name="default_file_name">New File.md</string>
+    <string name="default_file_content"># New File\n\nStart typing…</string>
+    <string name="unknown_file">Unknown.md</string>
+    <string name="project_default_name">Project</string>
+
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="action_insert">Insert</string>
+    <string name="action_create">Create</string>
+    <string name="action_add">Add</string>
+    <string name="action_back">Back</string>
+
+    <string name="rename_project_title">Rename Project</string>
+    <string name="rename_file_title">Rename File</string>
+
+    <string name="link_dialog_title">Insert link</string>
+    <string name="link_text_label">Text</string>
+    <string name="link_url_label">URL</string>
+    <string name="link_default_label">link</string>
+
+    <string name="project_new_title">New project</string>
+    <string name="project_manage_title">Manage project</string>
+    <string name="project_name_label">Project name</string>
+    <string name="project_files_order">File order</string>
+    <string name="move_up">Move up</string>
+    <string name="move_down">Move down</string>
+    <string name="remove">Remove</string>
+    <string name="open_project_title">Open project</string>
+    <string name="no_saved_projects">No saved projects yet.</string>
+    <string name="files_count">%d file(s)</string>
+    <string name="delete_project">Delete project</string>
+
+    <string name="index_title">Index</string>
+    <string name="no_chapters">No chapters found.</string>
+
+    <string name="cd_undo">Undo</string>
+    <string name="cd_redo">Redo</string>
+    <string name="cd_open_file">Open file</string>
+    <string name="cd_split">Side by side</string>
+    <string name="cd_toggle">Toggle</string>
+    <string name="cd_menu">Menu</string>
+    <string name="cd_project">Project</string>
+    <string name="cd_rename">Rename</string>
+
+    <string name="menu_themes">Themes</string>
+    <string name="menu_recents">Recents</string>
+    <string name="no_recent_files">No recent files</string>
+    <string name="section_file">File</string>
+    <string name="menu_new">New</string>
+    <string name="menu_open_project_file">Open project from file…</string>
+    <string name="menu_save_project_disk">Save project to disk…</string>
+    <string name="menu_save_as">Save as…</string>
+    <string name="section_export">Export</string>
+    <string name="export_html">Export HTML</string>
+    <string name="export_pdf">Export PDF</string>
+    <string name="section_appearance">Appearance</string>
+    <string name="font_size">Font size: %d</string>
+    <string name="decrease">Decrease</string>
+    <string name="increase">Increase</string>
+    <string name="theme_label">Theme: %s</string>
+    <string name="section_preferences">Preferences</string>
+    <string name="autosave_on">Auto-save: on</string>
+    <string name="autosave_off">Auto-save: off</string>
+    <string name="menu_language">Language</string>
+    <string name="language_system">System default</string>
+
+    <string name="tb_title1">Heading 1</string>
+    <string name="tb_title2">Heading 2</string>
+    <string name="tb_title3">Heading 3</string>
+    <string name="tb_bold">Bold</string>
+    <string name="tb_italic">Italic</string>
+    <string name="tb_strikethrough">Strikethrough</string>
+    <string name="tb_quote">Quote</string>
+    <string name="tb_code">Code</string>
+    <string name="tb_list">List</string>
+    <string name="tb_numbered">Numbered</string>
+    <string name="tb_task">Task</string>
+    <string name="tb_link">Link</string>
+    <string name="tb_rule">Rule</string>
+    <string name="tb_comment">Comment</string>
+    <string name="comment_snippet">&lt;!-- comment --&gt;</string>
+    <string name="tb_diagram">Diagram</string>
+    <string name="tb_formula">Formula</string>
+    <string name="tb_read_from_here">Read from here</string>
+
+    <string name="part_indicator">Part %1$d/%2$d</string>
+    <string name="prev_part">Previous part</string>
+    <string name="next_part">Next part</string>
+    <string name="manage_project">Manage project</string>
+    <string name="status_words_chars">%1$d words · %2$d chars</string>
+    <string name="status_reading_time"> · ~%d min</string>
+
+    <string name="percent_read">%d%% read</string>
+    <string name="minutes_left">~%d min left</string>
+    <string name="prev_section">Previous section</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="read_aloud">Read aloud</string>
+    <string name="next_section">Next section</string>
+    <string name="stop_reading">Stop reading</string>
+    <string name="reading">Reading…</string>
+    <string name="paused">Paused</string>
+    <string name="choose_voice">Choose voice and engine</string>
+    <string name="finish_edit">Finish editing</string>
+    <string name="document_default">Document</string>
+
+    <string name="tts_settings_title">Reading settings</string>
+    <string name="tts_speed">Speed</string>
+    <string name="tts_pitch">Pitch</string>
+    <string name="tts_sleep_timer">Sleep timer</string>
+    <string name="tts_off">Off</string>
+    <string name="tts_minutes">%d min</string>
+    <string name="tts_test_voice">Test voice</string>
+    <string name="tts_engine">Engine</string>
+    <string name="tts_loading">Loading…</string>
+    <string name="tts_language">Language</string>
+    <string name="tts_all">All</string>
+    <string name="tts_voice">Voice</string>
+    <string name="tts_no_voice">No voice for this filter.</string>
+
+    <string name="notif_pause">Pause</string>
+    <string name="notif_play">Play</string>
+    <string name="notif_reading">Reading aloud</string>
+    <string name="notif_paused">Paused</string>
+    <string name="notif_prev">Previous</string>
+    <string name="notif_next">Next</string>
+    <string name="notif_stop">Stop</string>
+    <string name="notif_channel">Read aloud</string>
+</resources>

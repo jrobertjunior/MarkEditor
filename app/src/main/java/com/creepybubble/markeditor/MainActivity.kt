@@ -17,6 +17,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,6 +39,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +56,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+
+/** Cria um documento novo em branco com nome/conteúdo no idioma atual. */
+fun newDoc(context: Context): Document = Document(
+    name = context.getString(R.string.default_file_name),
+    initialText = context.getString(R.string.default_file_content)
+)
 
 fun getFileName(context: Context, uri: Uri): String {
     var result: String? = null
@@ -65,7 +79,7 @@ fun getFileName(context: Context, uri: Uri): String {
         val cut = result?.lastIndexOf('/') ?: -1
         if (cut != -1) result = result?.substring(cut + 1)
     }
-    return result ?: "Desconhecido.md"
+    return result ?: context.getString(R.string.unknown_file)
 }
 
 /** Lista os arquivos markdown de uma pasta escolhida via árvore SAF. */
@@ -99,6 +113,11 @@ fun listMarkdownInTree(context: Context, treeUri: Uri): List<Pair<Uri, String>> 
 
 class MainActivity : ComponentActivity() {
     private val pendingOpenUri = mutableStateOf<Uri?>(null)
+
+    // Aplica o idioma escolhido pelo usuário antes de inflar qualquer recurso.
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -176,7 +195,7 @@ fun MarkEditorApp(
                     }
                 }
             } else {
-                add(SingleTab(Document()))
+                add(SingleTab(newDoc(context)))
             }
         }
     }
@@ -190,6 +209,8 @@ fun MarkEditorApp(
     val currentDoc = currentTab.editable
 
     var isPreviewMode by remember { mutableStateOf(restored?.previewMode ?: false) }
+    // Orientação atual (usada tanto na barra superior quanto na renderização dos painéis).
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     // Muda só quando o bloco visível no preview muda, para disparar o salvamento sem exagero.
     var scrollTick by remember { mutableIntStateOf(0) }
 
@@ -245,12 +266,14 @@ fun MarkEditorApp(
         true
     }
     var fontSize by remember { mutableStateOf(appPrefs.getFloat("fontsize", 16f)) }
+    // No modo horizontal: mostrar editor e visualizador lado a lado (true) ou um painel só (false).
+    var splitView by remember { mutableStateOf(appPrefs.getBoolean("splitview", true)) }
     var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
 
     // Rascunho do diálogo de projeto: arquivos (na ordem) + nome, antes de confirmar.
     var showProjectDialog by remember { mutableStateOf(false) }
     var projectDraft by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
-    var projectName by remember { mutableStateOf("Projeto") }
+    var projectName by remember { mutableStateOf(context.getString(R.string.project_default_name)) }
     // Se != null, o diálogo está EDITANDO um projeto aberto; se null, está criando um novo.
     var editingProject by remember { mutableStateOf<Project?>(null) }
 
@@ -348,7 +371,7 @@ fun MarkEditorApp(
                 persistUriPermission(u)
                 u to getFileName(context, u)
             }
-            projectName = "Projeto"
+            projectName = context.getString(R.string.project_default_name)
             editingProject = null
             showProjectDialog = true
         }
@@ -493,7 +516,7 @@ fun MarkEditorApp(
         val isProject = tabToRename is Project
         AlertDialog(
             onDismissRequest = { showRenameDialog = null },
-            title = { Text(if (isProject) "Renomear Projeto" else "Renomear Arquivo", color = gruvboxText) },
+            title = { Text(stringResource(if (isProject) R.string.rename_project_title else R.string.rename_file_title), color = gruvboxText) },
             containerColor = gruvboxSurface,
             textContentColor = gruvboxText,
             titleContentColor = gruvboxOrange,
@@ -513,16 +536,16 @@ fun MarkEditorApp(
                 TextButton(onClick = {
                     when (tabToRename) {
                         is Project -> {
-                            tabToRename.name = newFileName.ifBlank { "Projeto" }
+                            tabToRename.name = newFileName.ifBlank { context.getString(R.string.project_default_name) }
                             persistProject(tabToRename)
                         }
                         is SingleTab -> tabToRename.doc.name = if (newFileName.endsWith(".md")) newFileName else "$newFileName.md"
                     }
                     showRenameDialog = null
-                }) { Text("Salvar", color = gruvboxOrange) }
+                }) { Text(stringResource(R.string.action_save), color = gruvboxOrange) }
             },
             dismissButton = {
-                TextButton(onClick = { showRenameDialog = null }) { Text("Cancelar", color = gruvboxGray) }
+                TextButton(onClick = { showRenameDialog = null }) { Text(stringResource(R.string.action_cancel), color = gruvboxGray) }
             }
         )
     }
@@ -535,18 +558,18 @@ fun MarkEditorApp(
         )
         AlertDialog(
             onDismissRequest = { showLinkDialog = false },
-            title = { Text("Inserir link", color = gruvboxOrange) },
+            title = { Text(stringResource(R.string.link_dialog_title), color = gruvboxOrange) },
             containerColor = gruvboxSurface,
             text = {
                 Column {
                     TextField(
                         value = linkText, onValueChange = { linkText = it }, singleLine = true,
-                        label = { Text("Texto", color = gruvboxGray) }, colors = linkFieldColors
+                        label = { Text(stringResource(R.string.link_text_label), color = gruvboxGray) }, colors = linkFieldColors
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     TextField(
                         value = linkUrl, onValueChange = { linkUrl = it }, singleLine = true,
-                        label = { Text("URL", color = gruvboxGray) }, colors = linkFieldColors
+                        label = { Text(stringResource(R.string.link_url_label), color = gruvboxGray) }, colors = linkFieldColors
                     )
                 }
             },
@@ -554,15 +577,15 @@ fun MarkEditorApp(
                 TextButton(onClick = {
                     val sel = currentDoc.textState.selection
                     val text = currentDoc.textState.text
-                    val label = linkText.ifBlank { "link" }
+                    val label = linkText.ifBlank { context.getString(R.string.link_default_label) }
                     val insert = "[$label]($linkUrl)"
                     val newText = text.replaceRange(sel.start, sel.end, insert)
                     updateTextState(TextFieldValue(newText, TextRange(sel.start + insert.length)))
                     showLinkDialog = false
-                }) { Text("Inserir", color = gruvboxOrange) }
+                }) { Text(stringResource(R.string.action_insert), color = gruvboxOrange) }
             },
             dismissButton = {
-                TextButton(onClick = { showLinkDialog = false }) { Text("Cancelar", color = gruvboxGray) }
+                TextButton(onClick = { showLinkDialog = false }) { Text(stringResource(R.string.action_cancel), color = gruvboxGray) }
             }
         )
     }
@@ -571,7 +594,7 @@ fun MarkEditorApp(
         val editing = editingProject
         AlertDialog(
             onDismissRequest = { showProjectDialog = false },
-            title = { Text(if (editing != null) "Gerenciar projeto" else "Novo projeto", color = gruvboxOrange) },
+            title = { Text(stringResource(if (editing != null) R.string.project_manage_title else R.string.project_new_title), color = gruvboxOrange) },
             containerColor = gruvboxSurface,
             text = {
                 Column {
@@ -579,7 +602,7 @@ fun MarkEditorApp(
                         value = projectName,
                         onValueChange = { projectName = it },
                         singleLine = true,
-                        label = { Text("Nome do projeto", color = gruvboxGray) },
+                        label = { Text(stringResource(R.string.project_name_label), color = gruvboxGray) },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
                             focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
@@ -588,11 +611,11 @@ fun MarkEditorApp(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Ordem dos arquivos", color = gruvboxGray, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.project_files_order), color = gruvboxGray, fontSize = 12.sp, modifier = Modifier.weight(1f))
                         TextButton(onClick = { addFilesLauncher.launch(arrayOf("*/*")) }) {
                             Icon(Icons.Default.Add, null, tint = gruvboxOrange, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Adicionar", color = gruvboxOrange, fontSize = 13.sp)
+                            Text(stringResource(R.string.action_add), color = gruvboxOrange, fontSize = 13.sp)
                         }
                     }
                     LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
@@ -609,18 +632,18 @@ fun MarkEditorApp(
                                     },
                                     enabled = index > 0,
                                     modifier = Modifier.size(32.dp)
-                                ) { Icon(Icons.Default.KeyboardArrowUp, "Subir", tint = if (index > 0) gruvboxText else gruvboxGray) }
+                                ) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.move_up), tint = if (index > 0) gruvboxText else gruvboxGray) }
                                 IconButton(
                                     onClick = {
                                         if (index < projectDraft.size - 1) projectDraft = projectDraft.toMutableList().also { it.add(index + 1, it.removeAt(index)) }
                                     },
                                     enabled = index < projectDraft.size - 1,
                                     modifier = Modifier.size(32.dp)
-                                ) { Icon(Icons.Default.KeyboardArrowDown, "Descer", tint = if (index < projectDraft.size - 1) gruvboxText else gruvboxGray) }
+                                ) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.move_down), tint = if (index < projectDraft.size - 1) gruvboxText else gruvboxGray) }
                                 IconButton(
                                     onClick = { projectDraft = projectDraft.toMutableList().also { it.removeAt(index) } },
                                     modifier = Modifier.size(32.dp)
-                                ) { Icon(Icons.Default.Close, "Remover", tint = gruvboxGray) }
+                                ) { Icon(Icons.Default.Close, stringResource(R.string.remove), tint = gruvboxGray) }
                             }
                         }
                     }
@@ -630,7 +653,7 @@ fun MarkEditorApp(
                 TextButton(
                     enabled = projectDraft.isNotEmpty(),
                     onClick = {
-                        val name = projectName.ifBlank { "Projeto" }
+                        val name = projectName.ifBlank { context.getString(R.string.project_default_name) }
                         if (editing != null) {
                             // Reconcilia mantendo as partes existentes (com suas edições) e
                             // criando Document novo só para arquivos recém-adicionados.
@@ -656,10 +679,10 @@ fun MarkEditorApp(
                         editingProject = null
                         showProjectDialog = false
                     }
-                ) { Text(if (editing != null) "Salvar" else "Criar", color = if (projectDraft.isNotEmpty()) gruvboxOrange else gruvboxGray) }
+                ) { Text(stringResource(if (editing != null) R.string.action_save else R.string.action_create), color = if (projectDraft.isNotEmpty()) gruvboxOrange else gruvboxGray) }
             },
             dismissButton = {
-                TextButton(onClick = { showProjectDialog = false; editingProject = null }) { Text("Cancelar", color = gruvboxGray) }
+                TextButton(onClick = { showProjectDialog = false; editingProject = null }) { Text(stringResource(R.string.action_cancel), color = gruvboxGray) }
             }
         )
     }
@@ -667,11 +690,11 @@ fun MarkEditorApp(
     if (showOpenProjectDialog) {
         AlertDialog(
             onDismissRequest = { showOpenProjectDialog = false },
-            title = { Text("Abrir projeto", color = gruvboxOrange) },
+            title = { Text(stringResource(R.string.open_project_title), color = gruvboxOrange) },
             containerColor = gruvboxSurface,
             text = {
                 if (savedProjects.isEmpty()) {
-                    Text("Nenhum projeto salvo ainda.", color = gruvboxGray)
+                    Text(stringResource(R.string.no_saved_projects), color = gruvboxGray)
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
                         items(savedProjects, key = { it.id }) { sp ->
@@ -702,13 +725,13 @@ fun MarkEditorApp(
                                     }.padding(vertical = 8.dp, horizontal = 4.dp)
                                 ) {
                                     Text(sp.name, color = gruvboxText, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    Text("${sp.files.size} arquivo(s)", color = gruvboxGray, fontSize = 12.sp)
+                                    Text(stringResource(R.string.files_count, sp.files.size), color = gruvboxGray, fontSize = 12.sp)
                                 }
                                 IconButton(onClick = {
                                     ProjectStore.delete(context, sp.id)
                                     savedProjects = ProjectStore.load(context)
                                 }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Default.Delete, "Excluir projeto", tint = gruvboxGray)
+                                    Icon(Icons.Default.Delete, stringResource(R.string.delete_project), tint = gruvboxGray)
                                 }
                             }
                         }
@@ -716,7 +739,7 @@ fun MarkEditorApp(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showOpenProjectDialog = false }) { Text("Fechar", color = gruvboxOrange) }
+                TextButton(onClick = { showOpenProjectDialog = false }) { Text(stringResource(R.string.action_close), color = gruvboxOrange) }
             }
         )
     }
@@ -725,7 +748,7 @@ fun MarkEditorApp(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = gruvboxBg, drawerContentColor = gruvboxText, modifier = Modifier.width(300.dp)) {
-                Text("Índice", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, color = gruvboxOrange, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.index_title), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, color = gruvboxOrange, fontWeight = FontWeight.Bold)
                 HorizontalDivider(color = gruvboxSurface)
                 val indexProject = currentProject
                 if (indexProject != null) {
@@ -767,7 +790,7 @@ fun MarkEditorApp(
                         }
                     }
                 } else if (tocItems.isEmpty()) {
-                    Text("Nenhum capítulo encontrado.", modifier = Modifier.padding(16.dp), color = gruvboxGray)
+                    Text(stringResource(R.string.no_chapters), modifier = Modifier.padding(16.dp), color = gruvboxGray)
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(tocItems) { item ->
@@ -790,25 +813,35 @@ fun MarkEditorApp(
                     title = { }, // Título removido para a barra respirar e não esmagar os ícones!
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = gruvboxBg),
                     navigationIcon = {
-                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Índice", tint = gruvboxOrange) }
+                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, stringResource(R.string.index_title), tint = gruvboxOrange) }
                     },
                     actions = {
                         // Ícones fixos, disponíveis nos dois modos (edição e visualização)
                         IconButton(onClick = { currentDoc.undoRedoManager.undo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canUndo) {
-                            Icon(Icons.Default.Undo, "Desfazer", tint = if (currentDoc.undoRedoManager.canUndo) gruvboxText else gruvboxGray)
+                            Icon(Icons.Default.Undo, stringResource(R.string.cd_undo), tint = if (currentDoc.undoRedoManager.canUndo) gruvboxText else gruvboxGray)
                         }
                         IconButton(onClick = { currentDoc.undoRedoManager.redo { currentDoc.textState = it } }, enabled = currentDoc.undoRedoManager.canRedo) {
-                            Icon(Icons.Default.Redo, "Refazer", tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray)
+                            Icon(Icons.Default.Redo, stringResource(R.string.cd_redo), tint = if (currentDoc.undoRedoManager.canRedo) gruvboxText else gruvboxGray)
                         }
-                        IconButton(onClick = { saveCurrentTab() }) { Icon(Icons.Default.Save, "Salvar", tint = gruvboxText) }
-                        IconButton(onClick = { openFileLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.FolderOpen, "Abrir arquivo", tint = gruvboxText) }
-                        IconButton(onClick = { openProjectFilesLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.LibraryBooks, "Novo projeto", tint = gruvboxText) }
+                        IconButton(onClick = { saveCurrentTab() }) { Icon(Icons.Default.Save, stringResource(R.string.action_save), tint = gruvboxText) }
+                        IconButton(onClick = { openFileLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.FolderOpen, stringResource(R.string.cd_open_file), tint = gruvboxText) }
+                        IconButton(onClick = { openProjectFilesLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.LibraryBooks, stringResource(R.string.project_new_title), tint = gruvboxText) }
 
-                        IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, "Alternar", tint = gruvboxText) }
+                        // No horizontal: alterna entre painel único e lado a lado.
+                        if (landscape) {
+                            IconButton(onClick = {
+                                splitView = !splitView
+                                appPrefs.edit().putBoolean("splitview", splitView).apply()
+                            }) { Icon(Icons.Default.Splitscreen, stringResource(R.string.cd_split), tint = if (splitView) gruvboxOrange else gruvboxText) }
+                        }
+                        // Editor/visualização: relevante quando NÃO está no modo lado a lado.
+                        if (!(landscape && splitView)) {
+                            IconButton(onClick = { isPreviewMode = !isPreviewMode }) { Icon(if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility, stringResource(R.string.cd_toggle), tint = gruvboxText) }
+                        }
 
                         Box {
                             IconButton(onClick = { menuPage = "main"; showExportMenu = true }) {
-                                Icon(Icons.Default.MoreVert, "Menu", tint = gruvboxText)
+                                Icon(Icons.Default.MoreVert, stringResource(R.string.cd_menu), tint = gruvboxText)
                             }
                             DropdownMenu(
                                 expanded = showExportMenu,
@@ -819,8 +852,8 @@ fun MarkEditorApp(
                                     // ======== Submenu: Temas ========
                                     "themes" -> {
                                         DropdownMenuItem(
-                                            text = { Text("Temas", color = gruvboxOrange, fontWeight = FontWeight.Bold) },
-                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, "Voltar", tint = gruvboxOrange) },
+                                            text = { Text(stringResource(R.string.menu_themes), color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, stringResource(R.string.action_back), tint = gruvboxOrange) },
                                             onClick = { menuPage = "main" }
                                         )
                                         HorizontalDivider(color = gruvboxBg)
@@ -844,14 +877,14 @@ fun MarkEditorApp(
                                     // ======== Submenu: Recentes ========
                                     "recents" -> {
                                         DropdownMenuItem(
-                                            text = { Text("Recentes", color = gruvboxOrange, fontWeight = FontWeight.Bold) },
-                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, "Voltar", tint = gruvboxOrange) },
+                                            text = { Text(stringResource(R.string.menu_recents), color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, stringResource(R.string.action_back), tint = gruvboxOrange) },
                                             onClick = { menuPage = "main" }
                                         )
                                         HorizontalDivider(color = gruvboxBg)
                                         if (recents.isEmpty()) {
                                             DropdownMenuItem(
-                                                text = { Text("Nenhum arquivo recente", color = gruvboxGray) },
+                                                text = { Text(stringResource(R.string.no_recent_files), color = gruvboxGray) },
                                                 enabled = false,
                                                 onClick = { }
                                             )
@@ -868,20 +901,51 @@ fun MarkEditorApp(
                                         }
                                     }
 
+                                    // ======== Submenu: Idioma ========
+                                    "lang" -> {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.menu_language), color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, stringResource(R.string.action_back), tint = gruvboxOrange) },
+                                            onClick = { menuPage = "main" }
+                                        )
+                                        HorizontalDivider(color = gruvboxBg)
+                                        val currentLang = appPrefs.getString("app_language", "") ?: ""
+                                        val languages = listOf(
+                                            "" to stringResource(R.string.language_system),
+                                            "pt" to stringResource(R.string.lang_pt),
+                                            "en" to stringResource(R.string.lang_en),
+                                            "fr" to stringResource(R.string.lang_fr),
+                                            "es" to stringResource(R.string.lang_es),
+                                            "ko" to stringResource(R.string.lang_ko),
+                                            "ja" to stringResource(R.string.lang_ja),
+                                            "zh" to stringResource(R.string.lang_zh)
+                                        )
+                                        languages.forEach { (tag, label) ->
+                                            DropdownMenuItem(
+                                                text = { Text(label, color = if (tag == currentLang) gruvboxOrange else gruvboxText) },
+                                                onClick = {
+                                                    appPrefs.edit().putString("app_language", tag).apply()
+                                                    showExportMenu = false
+                                                    (context as? android.app.Activity)?.recreate()
+                                                }
+                                            )
+                                        }
+                                    }
+
                                     // ======== Página principal ========
                                     else -> {
-                                        MenuSection("Arquivo")
+                                        MenuSection(stringResource(R.string.section_file))
                                         DropdownMenuItem(
-                                            text = { Text("Novo", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.menu_new), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.Add, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
-                                                tabs.add(SingleTab(Document()))
+                                                tabs.add(SingleTab(newDoc(context)))
                                                 selectedIndex = tabs.size - 1
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Abrir arquivo", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.cd_open_file), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.FolderOpen, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
@@ -889,7 +953,7 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Novo projeto", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.project_new_title), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.LibraryBooks, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
@@ -897,7 +961,7 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Abrir projeto", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.open_project_title), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.FolderSpecial, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
@@ -906,7 +970,7 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Abrir projeto de arquivo…", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.menu_open_project_file), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.FileOpen, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
@@ -914,7 +978,7 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Salvar projeto em disco…", color = if (currentProject != null) gruvboxText else gruvboxGray) },
+                                            text = { Text(stringResource(R.string.menu_save_project_disk), color = if (currentProject != null) gruvboxText else gruvboxGray) },
                                             leadingIcon = { Icon(Icons.Default.SaveAs, null, tint = gruvboxGray) },
                                             enabled = currentProject != null,
                                             onClick = {
@@ -926,13 +990,13 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Recentes", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.menu_recents), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.History, null, tint = gruvboxGray) },
                                             trailingIcon = { Icon(Icons.Default.ChevronRight, null, tint = gruvboxGray) },
                                             onClick = { menuPage = "recents" }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Salvar", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.action_save), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.Save, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
@@ -940,7 +1004,7 @@ fun MarkEditorApp(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Salvar como…", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.menu_save_as), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.SaveAs, null, tint = gruvboxGray) },
                                             onClick = {
                                                 showExportMenu = false
@@ -949,16 +1013,16 @@ fun MarkEditorApp(
                                         )
 
                                         HorizontalDivider(color = gruvboxBg)
-                                        MenuSection("Exportar")
+                                        MenuSection(stringResource(R.string.section_export))
                                         DropdownMenuItem(
-                                            text = { Text("Exportar HTML", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.export_html), color = gruvboxText) },
                                             onClick = {
                                                 showExportMenu = false
                                                 exportHtmlLauncher.launch(currentDoc.name.removeSuffix(".md") + ".html")
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Exportar PDF", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.export_pdf), color = gruvboxText) },
                                             onClick = {
                                                 showExportMenu = false
                                                 exportPdfLauncher.launch(currentDoc.name.removeSuffix(".md") + ".pdf")
@@ -966,36 +1030,42 @@ fun MarkEditorApp(
                                         )
 
                                         HorizontalDivider(color = gruvboxBg)
-                                        MenuSection("Aparência")
+                                        MenuSection(stringResource(R.string.section_appearance))
                                         DropdownMenuItem(
-                                            text = { Text("Tamanho da fonte: ${fontSize.toInt()}", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.font_size, fontSize.toInt()), color = gruvboxText) },
                                             trailingIcon = {
                                                 Row {
                                                     IconButton(onClick = {
                                                         fontSize = (fontSize - 1f).coerceAtLeast(12f)
                                                         appPrefs.edit().putFloat("fontsize", fontSize).apply()
-                                                    }) { Icon(Icons.Default.Remove, "Diminuir", tint = gruvboxOrange) }
+                                                    }) { Icon(Icons.Default.Remove, stringResource(R.string.decrease), tint = gruvboxOrange) }
                                                     IconButton(onClick = {
                                                         fontSize = (fontSize + 1f).coerceAtMost(30f)
                                                         appPrefs.edit().putFloat("fontsize", fontSize).apply()
-                                                    }) { Icon(Icons.Default.Add, "Aumentar", tint = gruvboxOrange) }
+                                                    }) { Icon(Icons.Default.Add, stringResource(R.string.increase), tint = gruvboxOrange) }
                                                 }
                                             },
                                             onClick = { }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Tema: $currentPaletteName", color = gruvboxText) },
+                                            text = { Text(stringResource(R.string.theme_label, currentPaletteName), color = gruvboxText) },
                                             leadingIcon = { Icon(Icons.Default.Palette, null, tint = gruvboxGray) },
                                             trailingIcon = { Icon(Icons.Default.ChevronRight, null, tint = gruvboxGray) },
                                             onClick = { menuPage = "themes" }
                                         )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.menu_language), color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Language, null, tint = gruvboxGray) },
+                                            trailingIcon = { Icon(Icons.Default.ChevronRight, null, tint = gruvboxGray) },
+                                            onClick = { menuPage = "lang" }
+                                        )
 
                                         HorizontalDivider(color = gruvboxBg)
-                                        MenuSection("Preferências")
+                                        MenuSection(stringResource(R.string.section_preferences))
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    if (autoSaveEnabled) "Auto-salvar: ligado" else "Auto-salvar: desligado",
+                                                    stringResource(if (autoSaveEnabled) R.string.autosave_on else R.string.autosave_off),
                                                     color = if (autoSaveEnabled) gruvboxOrange else gruvboxGray
                                                 )
                                             },
@@ -1018,7 +1088,9 @@ fun MarkEditorApp(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(gruvboxBg)
-                        .navigationBarsPadding() // Proteção contra a barra da Samsung
+                        // Sobe acima do teclado quando ele abre; senão, protege da barra de navegação.
+                        // union = usa o maior dos dois (não soma), evitando vão duplicado.
+                        .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                 ScrollableTabRow(
@@ -1051,7 +1123,7 @@ fun MarkEditorApp(
                                     }
                                     // Projetos ganham um ícone para se distinguir de arquivos soltos.
                                     if (tab is Project) {
-                                        Icon(Icons.Default.LibraryBooks, "Projeto", tint = if (safeIndex == index) gruvboxOrange else gruvboxGray, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.LibraryBooks, stringResource(R.string.cd_project), tint = if (safeIndex == index) gruvboxOrange else gruvboxGray, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                     }
                                     Text(
@@ -1068,7 +1140,7 @@ fun MarkEditorApp(
                                             },
                                             modifier = Modifier.size(24.dp).padding(start = 4.dp)
                                         ) {
-                                            Icon(Icons.Default.Edit, "Renomear", tint = gruvboxOrange, modifier = Modifier.size(14.dp))
+                                            Icon(Icons.Default.Edit, stringResource(R.string.cd_rename), tint = gruvboxOrange, modifier = Modifier.size(14.dp))
                                         }
                                     }
 
@@ -1078,13 +1150,13 @@ fun MarkEditorApp(
                                         onClick = {
                                             tabs.removeAt(index)
                                             if (tabs.isEmpty()) {
-                                                tabs.add(SingleTab(Document()))
+                                                tabs.add(SingleTab(newDoc(context)))
                                             }
                                             selectedIndex = selectedIndex.coerceIn(0, tabs.size - 1)
                                         },
                                         modifier = Modifier.size(16.dp)
                                     ) {
-                                        Icon(Icons.Default.Close, "Fechar", tint = if (safeIndex == index) gruvboxOrange else gruvboxGray)
+                                        Icon(Icons.Default.Close, stringResource(R.string.action_close), tint = if (safeIndex == index) gruvboxOrange else gruvboxGray)
                                     }
                                 }
                             }
@@ -1094,8 +1166,46 @@ fun MarkEditorApp(
                 }
             }
         ) { innerPadding ->
-            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).imePadding().background(gruvboxBg)) {
-                val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).background(gruvboxBg)) {
+                // Rolagem observável do editor (necessária para o scroll sincronizado no lado a lado).
+                val editorScroll = rememberScrollState()
+                // Fração que o editor "manda" o preview seguir (só quando é o editor que está sendo rolado).
+                var previewTargetFraction by remember { mutableStateOf<Float?>(null) }
+                val syncOn = landscape && splitView
+
+                // Editor → Preview: quando o usuário rola o editor, calcula a fração e repassa.
+                LaunchedEffect(editorScroll, syncOn) {
+                    snapshotFlow { Triple(editorScroll.value, editorScroll.maxValue, editorScroll.isScrollInProgress) }
+                        .collect { (v, max, inProgress) ->
+                            if (syncOn && inProgress && max > 0) {
+                                previewTargetFraction = v.toFloat() / max
+                            }
+                        }
+                }
+
+                // "Seguir o cursor": layout do texto do editor + altura visível da caixa.
+                val editorDensity = LocalDensity.current
+                var editorTextLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                var editorViewportH by remember { mutableIntStateOf(0) }
+                // Sempre que a seleção/texto muda OU a caixa encolhe (teclado abriu),
+                // rola o editor para manter o cursor visível.
+                LaunchedEffect(currentDoc.textState.selection, editorTextLayout, editorViewportH) {
+                    val layout = editorTextLayout ?: return@LaunchedEffect
+                    if (editorViewportH <= 0) return@LaunchedEffect
+                    val offset = currentDoc.textState.selection.end.coerceIn(0, currentDoc.textState.text.length)
+                    val rect = try { layout.getCursorRect(offset) } catch (e: Exception) { return@LaunchedEffect }
+                    val margin = with(editorDensity) { 40.dp.toPx() }.toInt()
+                    val cursorTop = rect.top.toInt()
+                    val cursorBottom = rect.bottom.toInt()
+                    val current = editorScroll.value
+                    val viewBottom = current + editorViewportH
+                    when {
+                        cursorBottom + margin > viewBottom ->
+                            editorScroll.scrollTo((cursorBottom + margin - editorViewportH).coerceIn(0, editorScroll.maxValue))
+                        cursorTop - margin < current ->
+                            editorScroll.scrollTo((cursorTop - margin).coerceAtLeast(0))
+                    }
+                }
 
                 val previewPane: @Composable () -> Unit = {
                     Surface(modifier = Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(12.dp), color = gruvboxSurface) {
@@ -1120,6 +1230,12 @@ fun MarkEditorApp(
                                     onStartReadingConsumed = { readFromOffset = null },
                                     fontSize = fontSize,
                                     documentTitle = project.name,
+                                    externalScrollFraction = if (syncOn) previewTargetFraction else null,
+                                    onScrollFraction = { frac, inProg ->
+                                        if (syncOn && inProg && !editorScroll.isScrollInProgress) {
+                                            coroutineScope.launch { editorScroll.scrollTo((frac * editorScroll.maxValue).toInt()) }
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
@@ -1141,6 +1257,12 @@ fun MarkEditorApp(
                                     onStartReadingConsumed = { readFromOffset = null },
                                     fontSize = fontSize,
                                     documentTitle = currentDoc.name,
+                                    externalScrollFraction = if (syncOn) previewTargetFraction else null,
+                                    onScrollFraction = { frac, inProg ->
+                                        if (syncOn && inProg && !editorScroll.isScrollInProgress) {
+                                            coroutineScope.launch { editorScroll.scrollTo((frac * editorScroll.maxValue).toInt()) }
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -1161,16 +1283,16 @@ fun MarkEditorApp(
                                 onClick = { if (project.activeIndex > 0) project.activeIndex-- },
                                 enabled = project.activeIndex > 0,
                                 modifier = Modifier.size(32.dp)
-                            ) { Icon(Icons.Default.KeyboardArrowUp, "Parte anterior", tint = if (project.activeIndex > 0) gruvboxText else gruvboxGray) }
+                            ) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.prev_part), tint = if (project.activeIndex > 0) gruvboxText else gruvboxGray) }
                             Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                                Text("Parte ${project.activeIndex + 1}/${project.parts.size}", color = gruvboxGray, fontSize = 11.sp)
+                                Text(stringResource(R.string.part_indicator, project.activeIndex + 1, project.parts.size), color = gruvboxGray, fontSize = 11.sp)
                                 Text(project.editable.name, color = gruvboxOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                             IconButton(
                                 onClick = { if (project.activeIndex < project.parts.size - 1) project.activeIndex++ },
                                 enabled = project.activeIndex < project.parts.size - 1,
                                 modifier = Modifier.size(32.dp)
-                            ) { Icon(Icons.Default.KeyboardArrowDown, "Próxima parte", tint = if (project.activeIndex < project.parts.size - 1) gruvboxText else gruvboxGray) }
+                            ) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.next_part), tint = if (project.activeIndex < project.parts.size - 1) gruvboxText else gruvboxGray) }
                             // Gerenciar: adicionar/remover/reordenar arquivos do projeto.
                             IconButton(
                                 onClick = {
@@ -1180,7 +1302,7 @@ fun MarkEditorApp(
                                     showProjectDialog = true
                                 },
                                 modifier = Modifier.size(32.dp)
-                            ) { Icon(Icons.Default.Tune, "Gerenciar projeto", tint = gruvboxOrange) }
+                            ) { Icon(Icons.Default.Tune, stringResource(R.string.manage_project), tint = gruvboxOrange) }
                         }
                     }
                     // Nova estrutura: Row fixa contendo a LazyRow rolável
@@ -1197,50 +1319,62 @@ fun MarkEditorApp(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f) // A mágica que faz rolar apenas aqui dentro
                         ) {
-                            item { ToolBarButton("H1", onClick = { applyBlockTag("# ") }, label = "Título 1") }
-                            item { ToolBarButton("H2", onClick = { applyBlockTag("## ") }, label = "Título 2") }
-                            item { ToolBarButton("H3", onClick = { applyBlockTag("### ") }, label = "Título 3") }
-                            item { ToolBarIconButton(Icons.Default.FormatBold, onClick = { applyInlineTag("**", "**") }, label = "Negrito") }
-                            item { ToolBarIconButton(Icons.Default.FormatItalic, onClick = { applyInlineTag("*", "*") }, label = "Itálico") }
-                            item { ToolBarIconButton(Icons.Default.FormatStrikethrough, onClick = { applyInlineTag("~~", "~~") }, label = "Tachado") }
-                            item { ToolBarIconButton(Icons.Default.FormatQuote, onClick = { applyBlockTag("> ") }, label = "Citação") }
-                            item { ToolBarIconButton(Icons.Default.Code, onClick = { applyInlineTag("`", "`") }, label = "Código") }
-                            item { ToolBarIconButton(Icons.Default.FormatListBulleted, onClick = { applyBlockTag("- ") }, label = "Lista") }
-                            item { ToolBarIconButton(Icons.Default.FormatListNumbered, onClick = { applyBlockTag("1. ") }, label = "Numerada") }
-                            item { ToolBarIconButton(Icons.Default.CheckBox, onClick = { applyBlockTag("- [ ] ") }, label = "Tarefa") }
+                            item { ToolBarButton("H1", onClick = { applyBlockTag("# ") }, label = stringResource(R.string.tb_title1)) }
+                            item { ToolBarButton("H2", onClick = { applyBlockTag("## ") }, label = stringResource(R.string.tb_title2)) }
+                            item { ToolBarButton("H3", onClick = { applyBlockTag("### ") }, label = stringResource(R.string.tb_title3)) }
+                            item { ToolBarIconButton(Icons.Default.FormatBold, onClick = { applyInlineTag("**", "**") }, label = stringResource(R.string.tb_bold)) }
+                            item { ToolBarIconButton(Icons.Default.FormatItalic, onClick = { applyInlineTag("*", "*") }, label = stringResource(R.string.tb_italic)) }
+                            item { ToolBarIconButton(Icons.Default.FormatStrikethrough, onClick = { applyInlineTag("~~", "~~") }, label = stringResource(R.string.tb_strikethrough)) }
+                            item { ToolBarIconButton(Icons.Default.FormatQuote, onClick = { applyBlockTag("> ") }, label = stringResource(R.string.tb_quote)) }
+                            item { ToolBarIconButton(Icons.Default.Code, onClick = { applyInlineTag("`", "`") }, label = stringResource(R.string.tb_code)) }
+                            item { ToolBarIconButton(Icons.Default.FormatListBulleted, onClick = { applyBlockTag("- ") }, label = stringResource(R.string.tb_list)) }
+                            item { ToolBarIconButton(Icons.Default.FormatListNumbered, onClick = { applyBlockTag("1. ") }, label = stringResource(R.string.tb_numbered)) }
+                            item { ToolBarIconButton(Icons.Default.CheckBox, onClick = { applyBlockTag("- [ ] ") }, label = stringResource(R.string.tb_task)) }
                             item {
                                 ToolBarIconButton(Icons.Default.Link, onClick = {
                                     val sel = currentDoc.textState.selection
                                     linkText = currentDoc.textState.text.substring(sel.start, sel.end)
                                     linkUrl = ""
                                     showLinkDialog = true
-                                }, label = "Link")
+                                }, label = stringResource(R.string.tb_link))
                             }
-                            item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }, label = "Linha") }
-                            item { ToolBarIconButton(Icons.Default.Comment, onClick = { insertAtCursor("<!-- comentário -->") }, label = "Comentário") }
-                            item { ToolBarButton("Mermaid", onClick = { insertAtCursor("\n```mermaid\ngraph TD\n    A[Início] --> B[Fim]\n```\n") }, label = "Diagrama") }
-                            item { ToolBarButton("TeX", onClick = { insertAtCursor("\n${'$'}${'$'}\nE = mc^2\n${'$'}${'$'}\n") }, label = "Fórmula") }
+                            item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }, label = stringResource(R.string.tb_rule)) }
+                            item { ToolBarIconButton(Icons.Default.Comment, onClick = { insertAtCursor(context.getString(R.string.comment_snippet)) }, label = stringResource(R.string.tb_comment)) }
+                            item { ToolBarButton("Mermaid", onClick = { insertAtCursor("\n```mermaid\ngraph TD\n    A[Início] --> B[Fim]\n```\n") }, label = stringResource(R.string.tb_diagram)) }
+                            item { ToolBarButton("TeX", onClick = { insertAtCursor("\n${'$'}${'$'}\nE = mc^2\n${'$'}${'$'}\n") }, label = stringResource(R.string.tb_formula)) }
                             item {
                                 ToolBarIconButton(Icons.Default.VolumeUp, onClick = {
                                     readFromOffset = currentDoc.textState.selection.start
                                     isPreviewMode = true
-                                }, label = "Ler daqui")
+                                }, label = stringResource(R.string.tb_read_from_here))
                             }
                         }
                     }
 
-                    TextField(
-                        value = currentDoc.textState,
-                        onValueChange = { updateTextState(continueListOnNewline(currentDoc.textState, it)) },
-                        visualTransformation = MarkdownGruvboxTransformation(),
-                        modifier = Modifier.fillMaxWidth().weight(1f).padding(8.dp).clip(RoundedCornerShape(8.dp)).focusRequester(focusRequester),
-                        textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = fontSize.sp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
-                            focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
-                            cursorColor = gruvboxText, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
-                        )
-                    )
+                    // Editor com rolagem observável: o campo cresce com o conteúdo e quem rola é
+                    // o container externo. Assim conseguimos "seguir o cursor" (ao abrir o teclado
+                    // ou digitar) e sincronizar com o preview no modo lado a lado.
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(gruvboxBg)
+                            .onSizeChanged { editorViewportH = it.height }
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().verticalScroll(editorScroll).padding(horizontal = 10.dp, vertical = 10.dp)) {
+                            BasicTextField(
+                                value = currentDoc.textState,
+                                onValueChange = { updateTextState(continueListOnNewline(currentDoc.textState, it)) },
+                                visualTransformation = MarkdownGruvboxTransformation(),
+                                onTextLayout = { editorTextLayout = it },
+                                cursorBrush = SolidColor(gruvboxText),
+                                textStyle = LocalTextStyle.current.copy(color = gruvboxText, fontFamily = FontFamily.Monospace, fontSize = fontSize.sp),
+                                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+                            )
+                        }
+                    }
 
                     // Barra de status: contagem de palavras/caracteres e tempo de leitura.
                     val wordCount = countWords(currentDoc.textState.text)
@@ -1251,11 +1385,10 @@ fun MarkEditorApp(
                             .padding(horizontal = 12.dp, vertical = 3.dp),
                         horizontalArrangement = Arrangement.End
                     ) {
+                        val wordsChars = stringResource(R.string.status_words_chars, wordCount, currentDoc.textState.text.length)
+                        val readingTime = if (wordCount > 0) stringResource(R.string.status_reading_time, readingMinutes(wordCount)) else ""
                         Text(
-                            text = buildString {
-                                append("$wordCount palavras · ${currentDoc.textState.text.length} caract.")
-                                if (wordCount > 0) append(" · ~${readingMinutes(wordCount)} min")
-                            },
+                            text = wordsChars + readingTime,
                             color = gruvboxGray,
                             fontSize = 12.sp
                         )
@@ -1264,7 +1397,7 @@ fun MarkEditorApp(
                     }
                 }
 
-                if (landscape) {
+                if (landscape && splitView) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) { editorPane() }
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) { previewPane() }

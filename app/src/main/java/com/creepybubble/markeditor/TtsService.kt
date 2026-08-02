@@ -81,9 +81,9 @@ class TtsService : Service() {
         )
 
         val playPause = if (playing) {
-            NotificationCompat.Action(android.R.drawable.ic_media_pause, "Pausar", servicePending(ACTION_PAUSE))
+            NotificationCompat.Action(android.R.drawable.ic_media_pause, getString(R.string.notif_pause), servicePending(ACTION_PAUSE))
         } else {
-            NotificationCompat.Action(android.R.drawable.ic_media_play, "Tocar", servicePending(ACTION_PLAY))
+            NotificationCompat.Action(android.R.drawable.ic_media_play, getString(R.string.notif_play), servicePending(ACTION_PLAY))
         }
 
         val contentIntent = PendingIntent.getActivity(
@@ -94,15 +94,15 @@ class TtsService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle(tts.currentTitle)
-            .setContentText(if (playing) "Lendo em voz alta" else "Pausado")
+            .setContentText(if (playing) getString(R.string.notif_reading) else getString(R.string.notif_paused))
             .setContentIntent(contentIntent)
             .setOngoing(playing)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(android.R.drawable.ic_media_previous, "Anterior", servicePending(ACTION_PREV))
+            .addAction(android.R.drawable.ic_media_previous, getString(R.string.notif_prev), servicePending(ACTION_PREV))
             .addAction(playPause)
-            .addAction(android.R.drawable.ic_media_next, "Próximo", servicePending(ACTION_NEXT))
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Parar", servicePending(ACTION_STOP))
+            .addAction(android.R.drawable.ic_media_next, getString(R.string.notif_next), servicePending(ACTION_NEXT))
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.notif_stop), servicePending(ACTION_STOP))
             .setStyle(
                 MediaStyle()
                     .setMediaSession(mediaSession?.sessionToken)
@@ -123,7 +123,7 @@ class TtsService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "Leitura em voz alta", NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, getString(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW
             ).apply { setShowBadge(false) }
             nm.createNotificationChannel(channel)
         }

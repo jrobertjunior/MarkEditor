@@ -1,0 +1,131 @@
+<resources>
+    <string name="default_file_name">新規ファイル.md</string>
+    <string name="default_file_content"># 新規ファイル\n\n入力を始めましょう…</string>
+    <string name="unknown_file">不明.md</string>
+    <string name="project_default_name">プロジェクト</string>
+
+    <string name="action_save">保存</string>
+    <string name="action_cancel">キャンセル</string>
+    <string name="action_close">閉じる</string>
+    <string name="action_insert">挿入</string>
+    <string name="action_create">作成</string>
+    <string name="action_add">追加</string>
+    <string name="action_back">戻る</string>
+
+    <string name="rename_project_title">プロジェクト名を変更</string>
+    <string name="rename_file_title">ファイル名を変更</string>
+
+    <string name="link_dialog_title">リンクを挿入</string>
+    <string name="link_text_label">テキスト</string>
+    <string name="link_url_label">URL</string>
+    <string name="link_default_label">リンク</string>
+
+    <string name="project_new_title">新規プロジェクト</string>
+    <string name="project_manage_title">プロジェクトを管理</string>
+    <string name="project_name_label">プロジェクト名</string>
+    <string name="project_files_order">ファイルの順序</string>
+    <string name="move_up">上へ</string>
+    <string name="move_down">下へ</string>
+    <string name="remove">削除</string>
+    <string name="open_project_title">プロジェクトを開く</string>
+    <string name="no_saved_projects">保存されたプロジェクトはありません。</string>
+    <string name="files_count">%d 個のファイル</string>
+    <string name="delete_project">プロジェクトを削除</string>
+
+    <string name="index_title">目次</string>
+    <string name="no_chapters">章が見つかりません。</string>
+
+    <string name="cd_undo">元に戻す</string>
+    <string name="cd_redo">やり直す</string>
+    <string name="cd_open_file">ファイルを開く</string>
+    <string name="cd_split">左右に並べる</string>
+    <string name="cd_toggle">切り替え</string>
+    <string name="cd_menu">メニュー</string>
+    <string name="cd_project">プロジェクト</string>
+    <string name="cd_rename">名前を変更</string>
+
+    <string name="menu_themes">テーマ</string>
+    <string name="menu_recents">最近</string>
+    <string name="no_recent_files">最近のファイルはありません</string>
+    <string name="section_file">ファイル</string>
+    <string name="menu_new">新規</string>
+    <string name="menu_open_project_file">ファイルからプロジェクトを開く…</string>
+    <string name="menu_save_project_disk">プロジェクトをディスクに保存…</string>
+    <string name="menu_save_as">名前を付けて保存…</string>
+    <string name="section_export">エクスポート</string>
+    <string name="export_html">HTML でエクスポート</string>
+    <string name="export_pdf">PDF でエクスポート</string>
+    <string name="section_appearance">外観</string>
+    <string name="font_size">文字サイズ: %d</string>
+    <string name="decrease">小さく</string>
+    <string name="increase">大きく</string>
+    <string name="theme_label">テーマ: %s</string>
+    <string name="section_preferences">設定</string>
+    <string name="autosave_on">自動保存: オン</string>
+    <string name="autosave_off">自動保存: オフ</string>
+    <string name="menu_language">言語</string>
+    <string name="language_system">システムの既定</string>
+
+    <string name="tb_title1">見出し 1</string>
+    <string name="tb_title2">見出し 2</string>
+    <string name="tb_title3">見出し 3</string>
+    <string name="tb_bold">太字</string>
+    <string name="tb_italic">斜体</string>
+    <string name="tb_strikethrough">取り消し線</string>
+    <string name="tb_quote">引用</string>
+    <string name="tb_code">コード</string>
+    <string name="tb_list">箇条書き</string>
+    <string name="tb_numbered">番号付き</string>
+    <string name="tb_task">タスク</string>
+    <string name="tb_link">リンク</string>
+    <string name="tb_rule">区切り線</string>
+    <string name="tb_comment">コメント</string>
+    <string name="comment_snippet">&lt;!-- コメント --&gt;</string>
+    <string name="tb_diagram">図</string>
+    <string name="tb_formula">数式</string>
+    <string name="tb_read_from_here">ここから読み上げ</string>
+
+    <string name="part_indicator">パート %1$d/%2$d</string>
+    <string name="prev_part">前のパート</string>
+    <string name="next_part">次のパート</string>
+    <string name="manage_project">プロジェクトを管理</string>
+    <string name="status_words_chars">%1$d 単語 · %2$d 文字</string>
+    <string name="status_reading_time"> · 約 %d 分</string>
+
+    <string name="percent_read">%d%% 読了</string>
+    <string name="minutes_left">残り約 %d 分</string>
+    <string name="prev_section">前のセクション</string>
+    <string name="pause">一時停止</string>
+    <string name="resume">再開</string>
+    <string name="read_aloud">読み上げ</string>
+    <string name="next_section">次のセクション</string>
+    <string name="stop_reading">読み上げを停止</string>
+    <string name="reading">読み上げ中…</string>
+    <string name="paused">一時停止中</string>
+    <string name="choose_voice">音声とエンジンを選択</string>
+    <string name="finish_edit">編集を完了</string>
+    <string name="document_default">ドキュメント</string>
+
+    <string name="tts_settings_title">読み上げ設定</string>
+    <string name="tts_speed">速度</string>
+    <string name="tts_pitch">高さ</string>
+    <string name="tts_sleep_timer">スリープタイマー</string>
+    <string name="tts_off">オフ</string>
+    <string name="tts_minutes">%d 分</string>
+    <string name="tts_test_voice">音声をテスト</string>
+    <string name="tts_engine">エンジン</string>
+    <string name="tts_loading">読み込み中…</string>
+    <string name="tts_language">言語</string>
+    <string name="tts_all">すべて</string>
+    <string name="tts_voice">音声</string>
+    <string name="tts_no_voice">このフィルターに合う音声がありません。</string>
+
+    <string name="notif_pause">一時停止</string>
+    <string name="notif_play">再生</string>
+    <string name="notif_reading">読み上げ中</string>
+    <string name="notif_paused">一時停止中</string>
+    <string name="notif_prev">前へ</string>
+    <string name="notif_next">次へ</string>
+    <string name="notif_stop">停止</string>
+    <string name="notif_channel">読み上げ</string>
+</resources>
