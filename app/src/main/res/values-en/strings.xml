@@ -24,6 +24,7 @@
     <string name="project_manage_title">Manage project</string>
     <string name="project_name_label">Project name</string>
     <string name="project_files_order">File order</string>
+    <string name="reorder_handle">Reorder</string>
     <string name="move_up">Move up</string>
     <string name="move_down">Move down</string>
     <string name="remove">Remove</string>
@@ -128,4 +129,30 @@
     <string name="notif_next">Next</string>
     <string name="notif_stop">Stop</string>
     <string name="notif_channel">Read aloud</string>
+
+    <string name="menu_share">Share</string>
+    <string name="share_original">Original file (.md)</string>
+    <string name="share_html">HTML (rendered)</string>
+    <string name="share_pdf">PDF (rendered)</string>
+
+    <string name="tb_table">Table</string>
+    <string name="table_dialog_title">Insert table</string>
+    <string name="table_columns">Columns</string>
+    <string name="table_rows">Rows</string>
+    <string name="table_col_name">Column %d</string>
+    <string name="table_align">Align</string>
+
+    <string name="tb_image">Image</string>
+    <string name="image_dialog_title">Insert image</string>
+    <string name="image_alt_label">Alt text</string>
+    <string name="image_url_label">Image URL</string>
+    <string name="image_pick_device">Choose from device</string>
+
+    <string name="find_replace_title">Find and replace</string>
+    <string name="find_hint">Find</string>
+    <string name="replace_hint">Replace</string>
+    <string name="replace_all">Replace all</string>
+    <string name="find_case_cd">Match case</string>
+    <string name="find_previous">Previous match</string>
+    <string name="find_next">Next match</string>
 </resources>

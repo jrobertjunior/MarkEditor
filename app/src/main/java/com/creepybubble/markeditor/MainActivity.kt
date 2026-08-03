@@ -17,8 +17,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -46,6 +51,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -250,6 +256,14 @@ fun MarkEditorApp(
     var linkText by remember { mutableStateOf("") }
     var linkUrl by remember { mutableStateOf("") }
 
+    var showImageDialog by remember { mutableStateOf(false) }
+    var imageAlt by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
+
+    var showTableDialog by remember { mutableStateOf(false) }
+    var tableCols by remember { mutableIntStateOf(2) }
+    var tableRows by remember { mutableIntStateOf(2) }
+
     // Offset do cursor a partir do qual iniciar a leitura ao entrar no preview.
     var readFromOffset by remember { mutableStateOf<Int?>(null) }
 
@@ -268,6 +282,13 @@ fun MarkEditorApp(
     var fontSize by remember { mutableStateOf(appPrefs.getFloat("fontsize", 16f)) }
     // No modo horizontal: mostrar editor e visualizador lado a lado (true) ou um painel só (false).
     var splitView by remember { mutableStateOf(appPrefs.getBoolean("splitview", true)) }
+
+    // Buscar e substituir (opera sobre o documento/parte em edição).
+    var showFindBar by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var replaceQuery by remember { mutableStateOf("") }
+    var caseSensitive by remember { mutableStateOf(false) }
+    var matchPos by remember { mutableStateOf(-1) } // índice 0-based do match atual; -1 = nenhum
     var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
 
     // Rascunho do diálogo de projeto: arquivos (na ordem) + nome, antes de confirmar.
@@ -319,6 +340,53 @@ fun MarkEditorApp(
         val cursor = currentDoc.textState.selection.start
         val newText = text.substring(0, cursor) + snippet + text.substring(cursor)
         updateTextState(TextFieldValue(text = newText, selection = TextRange(cursor + snippet.length)))
+    }
+
+    // Buscar: posições (0-based) de todas as ocorrências, sem sobreposição.
+    val findMatches = remember(findQuery, currentDoc.textState.text, caseSensitive) {
+        if (findQuery.isEmpty()) emptyList()
+        else {
+            val hay = if (caseSensitive) currentDoc.textState.text else currentDoc.textState.text.lowercase()
+            val needle = if (caseSensitive) findQuery else findQuery.lowercase()
+            val res = ArrayList<Int>()
+            var i = hay.indexOf(needle)
+            while (i >= 0) { res.add(i); i = hay.indexOf(needle, i + needle.length) }
+            res
+        }
+    }
+
+    // Seleciona (destaca) a ocorrência de índice pos — o "seguir o cursor" rola até ela.
+    val selectMatchAt = { pos: Int ->
+        if (findMatches.isNotEmpty()) {
+            val idx = ((pos % findMatches.size) + findMatches.size) % findMatches.size
+            val start = findMatches[idx]
+            currentDoc.textState = currentDoc.textState.copy(selection = TextRange(start, start + findQuery.length))
+            matchPos = idx
+        }
+    }
+
+    val replaceCurrent = {
+        if (findQuery.isNotEmpty() && matchPos in findMatches.indices) {
+            val start = findMatches[matchPos]
+            val text = currentDoc.textState.text
+            val end = (start + findQuery.length).coerceAtMost(text.length)
+            val slice = text.substring(start, end)
+            if (slice.equals(findQuery, ignoreCase = !caseSensitive)) {
+                val newText = text.substring(0, start) + replaceQuery + text.substring(end)
+                updateTextState(TextFieldValue(newText, TextRange(start + replaceQuery.length)))
+            }
+        }
+    }
+
+    val replaceAll = {
+        if (findQuery.isNotEmpty() && findMatches.isNotEmpty()) {
+            var newText = currentDoc.textState.text
+            for (start in findMatches.reversed()) {
+                newText = newText.substring(0, start) + replaceQuery + newText.substring(start + findQuery.length)
+            }
+            updateTextState(TextFieldValue(newText, TextRange(0)))
+            matchPos = -1
+        }
     }
 
     val readFile = { uri: Uri -> context.contentResolver.openInputStream(uri)?.use { InputStreamReader(it).readText() } ?: "" }
@@ -387,6 +455,14 @@ fun MarkEditorApp(
             // Evita duplicar arquivos já presentes no rascunho.
             val existentes = projectDraft.map { it.first.toString() }.toSet()
             projectDraft = projectDraft + novos.filterNot { it.first.toString() in existentes }
+        }
+    }
+
+    // Escolher imagem do aparelho: persiste a permissão e coloca a URI no campo do diálogo.
+    val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            persistUriPermission(it)
+            imageUrl = it.toString()
         }
     }
 
@@ -484,8 +560,11 @@ fun MarkEditorApp(
     val exportHtmlLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
         uri?.let {
             try {
+                // Projeto: exporta o documento inteiro (texto combinado). Imagens locais embutidas.
+                val text = currentProject?.combinedText() ?: currentDoc.textState.text
+                val title = currentProject?.name ?: currentDoc.name
                 context.contentResolver.openOutputStream(it)?.use { os ->
-                    os.write(renderFullHtml(currentDoc.name, currentDoc.textState.text).toByteArray())
+                    os.write(renderFullHtml(title, text, context).toByteArray())
                 }
             } catch (e: Exception) { /* ignora falha de exportação */ }
         }
@@ -494,11 +573,51 @@ fun MarkEditorApp(
     val exportPdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         uri?.let {
             try {
-                context.contentResolver.openOutputStream(it)?.use { os ->
-                    writePdf(context, currentDoc.textState.text, os)
-                }
+                val text = currentProject?.combinedText() ?: currentDoc.textState.text
+                val title = currentProject?.name ?: currentDoc.name
+                val html = renderFullHtml(title, text, context)
+                val os = context.contentResolver.openOutputStream(it)
+                if (os != null) HtmlToPdf.render(context, html, os) { os.close() }
             } catch (e: Exception) { /* ignora falha de exportação */ }
         }
+    }
+
+    // Abre a aba de compartilhamento do Android para um arquivo já gravado.
+    val launchShareChooser = { file: java.io.File, mime: String, extraText: String? ->
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TITLE, file.name)
+                if (extraText != null) putExtra(Intent.EXTRA_TEXT, extraText)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.menu_share)))
+        } catch (e: Exception) { /* ignora falha de compartilhamento */ }
+    }
+
+    // Gera um arquivo temporário (síncrono) e abre a aba de compartilhamento.
+    val shareFile = { fileName: String, mime: String, extraText: String?, write: (java.io.OutputStream) -> Unit ->
+        try {
+            val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+            val file = java.io.File(dir, fileName)
+            file.outputStream().use { write(it) }
+            launchShareChooser(file, mime, extraText)
+        } catch (e: Exception) { /* ignora falha de compartilhamento */ }
+    }
+
+    // Gera um PDF (via WebView) e depois abre a aba de compartilhamento.
+    val sharePdf = { fileName: String, html: String ->
+        try {
+            val dir = java.io.File(context.cacheDir, "shared").apply { mkdirs() }
+            val file = java.io.File(dir, fileName)
+            val os = file.outputStream()
+            HtmlToPdf.render(context, html, os) { ok ->
+                os.close()
+                if (ok) launchShareChooser(file, "application/pdf", null)
+            }
+        } catch (e: Exception) { /* ignora falha de compartilhamento */ }
     }
 
     // Auto-save: grava no arquivo (se houver) pouco depois de parar de digitar.
@@ -590,6 +709,94 @@ fun MarkEditorApp(
         )
     }
 
+    if (showImageDialog) {
+        val imgFieldColors = TextFieldDefaults.colors(
+            focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
+            focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
+            cursorColor = gruvboxOrange
+        )
+        AlertDialog(
+            onDismissRequest = { showImageDialog = false },
+            title = { Text(stringResource(R.string.image_dialog_title), color = gruvboxOrange) },
+            containerColor = gruvboxSurface,
+            text = {
+                Column {
+                    TextField(
+                        value = imageAlt, onValueChange = { imageAlt = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.image_alt_label), color = gruvboxGray) }, colors = imgFieldColors
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextField(
+                        value = imageUrl, onValueChange = { imageUrl = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.image_url_label), color = gruvboxGray) }, colors = imgFieldColors
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(onClick = { pickImageLauncher.launch(arrayOf("image/*")) }) {
+                        Icon(Icons.Default.Image, null, tint = gruvboxOrange, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.image_pick_device), color = gruvboxOrange)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = imageUrl.isNotBlank(),
+                    onClick = {
+                        val sel = currentDoc.textState.selection
+                        val text = currentDoc.textState.text
+                        val insert = "![${imageAlt}](${imageUrl})"
+                        val newText = text.replaceRange(sel.start, sel.end, insert)
+                        updateTextState(TextFieldValue(newText, TextRange(sel.start + insert.length)))
+                        showImageDialog = false
+                    }
+                ) { Text(stringResource(R.string.action_insert), color = if (imageUrl.isNotBlank()) gruvboxOrange else gruvboxGray) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImageDialog = false }) { Text(stringResource(R.string.action_cancel), color = gruvboxGray) }
+            }
+        )
+    }
+
+    if (showTableDialog) {
+        AlertDialog(
+            onDismissRequest = { showTableDialog = false },
+            title = { Text(stringResource(R.string.table_dialog_title), color = gruvboxOrange) },
+            containerColor = gruvboxSurface,
+            text = {
+                Column {
+                    // Um seletor +/- reutilizável para colunas e linhas.
+                    @Composable
+                    fun Stepper(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(label, color = gruvboxText, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { if (value > min) onChange(value - 1) }, enabled = value > min) {
+                                Icon(Icons.Default.Remove, stringResource(R.string.decrease), tint = if (value > min) gruvboxOrange else gruvboxGray)
+                            }
+                            Text("$value", color = gruvboxOrange, fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp), textAlign = TextAlign.Center)
+                            IconButton(onClick = { if (value < max) onChange(value + 1) }, enabled = value < max) {
+                                Icon(Icons.Default.Add, stringResource(R.string.increase), tint = if (value < max) gruvboxOrange else gruvboxGray)
+                            }
+                        }
+                    }
+                    Stepper(stringResource(R.string.table_columns), tableCols, 1, 8) { tableCols = it }
+                    Stepper(stringResource(R.string.table_rows), tableRows, 1, 20) { tableRows = it }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val header = "| " + (1..tableCols).joinToString(" | ") { context.getString(R.string.table_col_name, it) } + " |"
+                    val sep = "| " + (1..tableCols).joinToString(" | ") { "---" } + " |"
+                    val body = (1..tableRows).joinToString("\n") { "| " + (1..tableCols).joinToString(" | ") { " " } + " |" }
+                    insertAtCursor("\n$header\n$sep\n$body\n")
+                    showTableDialog = false
+                }) { Text(stringResource(R.string.action_insert), color = gruvboxOrange) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTableDialog = false }) { Text(stringResource(R.string.action_cancel), color = gruvboxGray) }
+            }
+        )
+    }
+
     if (showProjectDialog) {
         val editing = editingProject
         AlertDialog(
@@ -618,12 +825,53 @@ fun MarkEditorApp(
                             Text(stringResource(R.string.action_add), color = gruvboxOrange, fontSize = 13.sp)
                         }
                     }
+                    // Reordenar arrastando pela alça (segurar e arrastar). As setas continuam
+                    // disponíveis como alternativa precisa.
+                    val dragDensity = LocalDensity.current
+                    val rowHeightPx = with(dragDensity) { 52.dp.toPx() }
+                    var dragIndex by remember { mutableStateOf(-1) }
+                    var dragOffset by remember { mutableStateOf(0f) }
                     LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                        itemsIndexed(projectDraft) { index, (_, name) ->
+                        itemsIndexed(projectDraft, key = { _, item -> item.first.toString() }) { index, (_, name) ->
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .zIndex(if (index == dragIndex) 1f else 0f)
+                                    .offset { IntOffset(0, if (index == dragIndex) dragOffset.roundToInt() else 0) }
+                                    .background(
+                                        if (index == dragIndex) gruvboxBg else Color.Transparent,
+                                        RoundedCornerShape(8.dp)
+                                    ),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Icon(
+                                    Icons.Default.DragIndicator,
+                                    stringResource(R.string.reorder_handle),
+                                    tint = gruvboxGray,
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .padding(start = 4.dp)
+                                        .pointerInput(projectDraft.size) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = { dragIndex = index; dragOffset = 0f },
+                                                onDragEnd = { dragIndex = -1; dragOffset = 0f },
+                                                onDragCancel = { dragIndex = -1; dragOffset = 0f },
+                                                onDrag = { change, amount ->
+                                                    change.consume()
+                                                    dragOffset += amount.y
+                                                    if (dragOffset > rowHeightPx && dragIndex < projectDraft.lastIndex) {
+                                                        projectDraft = projectDraft.toMutableList().also { it.add(dragIndex + 1, it.removeAt(dragIndex)) }
+                                                        dragIndex += 1; dragOffset -= rowHeightPx
+                                                    } else if (dragOffset < -rowHeightPx && dragIndex > 0) {
+                                                        projectDraft = projectDraft.toMutableList().also { it.add(dragIndex - 1, it.removeAt(dragIndex)) }
+                                                        dragIndex -= 1; dragOffset += rowHeightPx
+                                                    }
+                                                }
+                                            )
+                                        }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text("${index + 1}.", color = gruvboxOrange, modifier = Modifier.width(24.dp))
                                 Text(name, color = gruvboxText, maxLines = 1, modifier = Modifier.weight(1f))
                                 IconButton(
@@ -826,6 +1074,10 @@ fun MarkEditorApp(
                         IconButton(onClick = { saveCurrentTab() }) { Icon(Icons.Default.Save, stringResource(R.string.action_save), tint = gruvboxText) }
                         IconButton(onClick = { openFileLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.FolderOpen, stringResource(R.string.cd_open_file), tint = gruvboxText) }
                         IconButton(onClick = { openProjectFilesLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.LibraryBooks, stringResource(R.string.project_new_title), tint = gruvboxText) }
+                        IconButton(onClick = {
+                            showFindBar = !showFindBar
+                            if (showFindBar && !landscape) isPreviewMode = false
+                        }) { Icon(Icons.Default.Search, stringResource(R.string.find_replace_title), tint = if (showFindBar) gruvboxOrange else gruvboxText) }
 
                         // No horizontal: alterna entre painel único e lado a lado.
                         if (landscape) {
@@ -932,6 +1184,43 @@ fun MarkEditorApp(
                                         }
                                     }
 
+                                    // ======== Submenu: Compartilhar ========
+                                    "share" -> {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.menu_share), color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+                                            leadingIcon = { Icon(Icons.Default.ChevronLeft, stringResource(R.string.action_back), tint = gruvboxOrange) },
+                                            onClick = { menuPage = "main" }
+                                        )
+                                        HorizontalDivider(color = gruvboxBg)
+                                        val shareText = currentProject?.combinedText() ?: currentDoc.textState.text
+                                        val shareTitle = currentProject?.name ?: currentDoc.name
+                                        val shareBase = shareTitle.removeSuffix(".md").ifBlank { "documento" }
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.share_original), color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Description, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                shareFile("$shareBase.md", "text/markdown", shareText) { it.write(shareText.toByteArray()) }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.share_html), color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Code, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                shareFile("$shareBase.html", "text/html", null) { it.write(renderFullHtml(shareTitle, shareText, context).toByteArray()) }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.share_pdf), color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, null, tint = gruvboxGray) },
+                                            onClick = {
+                                                showExportMenu = false
+                                                sharePdf("$shareBase.pdf", renderFullHtml(shareTitle, shareText, context))
+                                            }
+                                        )
+                                    }
+
                                     // ======== Página principal ========
                                     else -> {
                                         MenuSection(stringResource(R.string.section_file))
@@ -1018,15 +1307,21 @@ fun MarkEditorApp(
                                             text = { Text(stringResource(R.string.export_html), color = gruvboxText) },
                                             onClick = {
                                                 showExportMenu = false
-                                                exportHtmlLauncher.launch(currentDoc.name.removeSuffix(".md") + ".html")
+                                                exportHtmlLauncher.launch((currentProject?.name ?: currentDoc.name).removeSuffix(".md") + ".html")
                                             }
                                         )
                                         DropdownMenuItem(
                                             text = { Text(stringResource(R.string.export_pdf), color = gruvboxText) },
                                             onClick = {
                                                 showExportMenu = false
-                                                exportPdfLauncher.launch(currentDoc.name.removeSuffix(".md") + ".pdf")
+                                                exportPdfLauncher.launch((currentProject?.name ?: currentDoc.name).removeSuffix(".md") + ".pdf")
                                             }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.menu_share), color = gruvboxText) },
+                                            leadingIcon = { Icon(Icons.Default.Share, null, tint = gruvboxGray) },
+                                            trailingIcon = { Icon(Icons.Default.ChevronRight, null, tint = gruvboxGray) },
+                                            onClick = { menuPage = "share" }
                                         )
 
                                         HorizontalDivider(color = gruvboxBg)
@@ -1338,6 +1633,18 @@ fun MarkEditorApp(
                                     showLinkDialog = true
                                 }, label = stringResource(R.string.tb_link))
                             }
+                            item {
+                                ToolBarIconButton(Icons.Default.Image, onClick = {
+                                    imageAlt = ""
+                                    imageUrl = ""
+                                    showImageDialog = true
+                                }, label = stringResource(R.string.tb_image))
+                            }
+                            item {
+                                ToolBarIconButton(Icons.Default.TableChart, onClick = {
+                                    showTableDialog = true
+                                }, label = stringResource(R.string.tb_table))
+                            }
                             item { ToolBarIconButton(Icons.Default.HorizontalRule, onClick = { insertAtCursor("\n---\n") }, label = stringResource(R.string.tb_rule)) }
                             item { ToolBarIconButton(Icons.Default.Comment, onClick = { insertAtCursor(context.getString(R.string.comment_snippet)) }, label = stringResource(R.string.tb_comment)) }
                             item { ToolBarButton("Mermaid", onClick = { insertAtCursor("\n```mermaid\ngraph TD\n    A[Início] --> B[Fim]\n```\n") }, label = stringResource(R.string.tb_diagram)) }
@@ -1397,13 +1704,77 @@ fun MarkEditorApp(
                     }
                 }
 
+                // Painel de buscar e substituir (acima dos painéis, opera sobre o texto em edição).
+                if (showFindBar) {
+                    val findColors = TextFieldDefaults.colors(
+                        focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
+                        focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
+                        cursorColor = gruvboxOrange,
+                        focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
+                    )
+                    Column(modifier = Modifier.fillMaxWidth().background(gruvboxSurface).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextField(
+                                value = findQuery,
+                                onValueChange = { findQuery = it; matchPos = -1 },
+                                singleLine = true,
+                                placeholder = { Text(stringResource(R.string.find_hint), color = gruvboxGray) },
+                                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                                colors = findColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (findQuery.isNotEmpty()) {
+                                Text(
+                                    stringResource(R.string.match_count, if (matchPos >= 0) matchPos + 1 else 0, findMatches.size),
+                                    color = gruvboxGray, fontSize = 12.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                )
+                            }
+                            IconButton(onClick = { caseSensitive = !caseSensitive; matchPos = -1 }, modifier = Modifier.size(36.dp)) {
+                                Text("Aa", color = if (caseSensitive) gruvboxOrange else gruvboxGray, fontWeight = FontWeight.Bold)
+                            }
+                            IconButton(
+                                onClick = { selectMatchAt(if (matchPos < 0) findMatches.lastIndex else matchPos - 1) },
+                                enabled = findMatches.isNotEmpty(), modifier = Modifier.size(36.dp)
+                            ) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.find_previous), tint = if (findMatches.isNotEmpty()) gruvboxText else gruvboxGray) }
+                            IconButton(
+                                onClick = { selectMatchAt(if (matchPos < 0) 0 else matchPos + 1) },
+                                enabled = findMatches.isNotEmpty(), modifier = Modifier.size(36.dp)
+                            ) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.find_next), tint = if (findMatches.isNotEmpty()) gruvboxText else gruvboxGray) }
+                            IconButton(onClick = { showFindBar = false }, modifier = Modifier.size(36.dp)) {
+                                Icon(Icons.Default.Close, stringResource(R.string.action_close), tint = gruvboxGray)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextField(
+                                value = replaceQuery,
+                                onValueChange = { replaceQuery = it },
+                                singleLine = true,
+                                placeholder = { Text(stringResource(R.string.replace_hint), color = gruvboxGray) },
+                                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                                colors = findColors,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { replaceCurrent() }, enabled = matchPos in findMatches.indices) {
+                                Text(stringResource(R.string.replace_hint), color = if (matchPos in findMatches.indices) gruvboxOrange else gruvboxGray)
+                            }
+                            TextButton(onClick = { replaceAll() }, enabled = findMatches.isNotEmpty()) {
+                                Text(stringResource(R.string.replace_all), color = if (findMatches.isNotEmpty()) gruvboxOrange else gruvboxGray)
+                            }
+                        }
+                    }
+                }
+
                 if (landscape && splitView) {
-                    Row(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) { editorPane() }
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) { previewPane() }
                     }
                 } else {
-                    if (isPreviewMode) previewPane() else editorPane()
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        if (isPreviewMode) previewPane() else editorPane()
+                    }
                 }
             }
         }

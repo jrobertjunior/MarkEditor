@@ -5,10 +5,16 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.widget.TextView
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,7 +29,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FormatAlignCenter
+import androidx.compose.material.icons.filled.FormatAlignLeft
+import androidx.compose.material.icons.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -36,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -58,7 +72,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -66,6 +82,8 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.network.NetworkSchemeHandler
 import kotlinx.coroutines.delay
 
 /** Encontra o índice do bloco que contém um dado offset de caractere. */
@@ -116,6 +134,11 @@ fun MarkdownPreview(
             .usePlugin(TablePlugin.create(context))
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(JLatexMathPlugin.create(latexPx))
+            // Imagens: web (http/https), arquivo, data URI e content:// (galeria/arquivos).
+            .usePlugin(ImagesPlugin.create { plugin ->
+                plugin.addSchemeHandler(NetworkSchemeHandler.create())
+                plugin.addSchemeHandler(ContentSchemeHandler(context))
+            })
             .build()
     }
 
@@ -288,15 +311,26 @@ fun MarkdownPreview(
                 val onLongClick = { editingIndex = index }
 
                 when {
-                    editingIndex == index -> BlockEditField(
-                        initial = block,
-                        fontSize = fontSize,
-                        onCommit = { newText ->
-                            if (index < blocks.size) blocks[index] = newText
-                            onTextChange(blocks.joinToString("\n\n"))
-                            if (editingIndex == index) editingIndex = null
-                        }
-                    )
+                    editingIndex == index -> {
+                        // Tabela edita como grade (WYSIWYG); demais blocos editam como texto.
+                        if (isTableBlock(block)) TableBlock(
+                            source = block,
+                            fontSize = fontSize,
+                            onChange = { updated ->
+                                if (index < blocks.size) blocks[index] = updated
+                                onTextChange(blocks.joinToString("\n\n"))
+                            },
+                            onDone = { if (editingIndex == index) editingIndex = null }
+                        ) else BlockEditField(
+                            initial = block,
+                            fontSize = fontSize,
+                            onCommit = { newText ->
+                                if (index < blocks.size) blocks[index] = newText
+                                onTextChange(blocks.joinToString("\n\n"))
+                                if (editingIndex == index) editingIndex = null
+                            }
+                        )
+                    }
 
                     isMermaidBlock(block) -> MermaidBlock(
                         source = block,
@@ -708,13 +742,20 @@ private fun applyWordHighlight(tv: TextView, highlight: WordHighlight?) {
     tv.text = spannable
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BlockEditField(initial: String, fontSize: Float, onCommit: (String) -> Unit) {
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // Mantém o campo em edição visível quando o teclado abre/fecha (o inset muda).
+    LaunchedEffect(hasFocused, imeBottom) {
+        if (hasFocused) runCatching { bringIntoView.bringIntoView() }
+    }
 
     Column(
         modifier = Modifier
@@ -729,6 +770,7 @@ private fun BlockEditField(initial: String, fontSize: Float, onCommit: (String) 
             textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = fontSize.sp),
             modifier = Modifier
                 .fillMaxWidth()
+                .bringIntoViewRequester(bringIntoView)
                 .focusRequester(focusRequester)
                 .onFocusChanged { state ->
                     if (state.isFocused) {
@@ -752,6 +794,157 @@ private fun BlockEditField(initial: String, fontSize: Float, onCommit: (String) 
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { onCommit(value.text) }, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.finish_edit), tint = gruvboxLilac)
+            }
+        }
+    }
+}
+
+/**
+ * Tabela editável no modo de visualização (WYSIWYG): grade de células editáveis com
+ * botões para adicionar/remover linhas e colunas. Cada mudança reescreve o Markdown.
+ */
+@Composable
+private fun TableBlock(source: String, fontSize: Float, onChange: (String) -> Unit, onDone: () -> Unit) {
+    val context = LocalContext.current
+    // Estado imutável da tabela; cada edição cria uma cópia nova (recompoe e reescreve o md).
+    var table by remember { mutableStateOf(parseTable(source)) }
+    fun apply(newTable: MarkdownTable) {
+        table = newTable
+        onChange(buildTable(newTable))
+    }
+
+    val cellColors = TextFieldDefaults.colors(
+        focusedContainerColor = gruvboxBg, unfocusedContainerColor = gruvboxBg,
+        focusedTextColor = gruvboxText, unfocusedTextColor = gruvboxText,
+        cursorColor = gruvboxOrange,
+        focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
+    )
+    val cellWidth = 130.dp
+
+    fun alignOf(c: Int) = table.aligns.getOrElse(c) { ColAlign.NONE }
+    fun textAlignFor(a: ColAlign) = when (a) {
+        ColAlign.CENTER -> TextAlign.Center
+        ColAlign.RIGHT -> TextAlign.End
+        else -> TextAlign.Start
+    }
+    fun iconFor(a: ColAlign) = when (a) {
+        ColAlign.CENTER -> Icons.Default.FormatAlignCenter
+        ColAlign.RIGHT -> Icons.Default.FormatAlignRight
+        else -> Icons.Default.FormatAlignLeft
+    }
+    fun cycleAlign(a: ColAlign) = when (a) {
+        ColAlign.NONE, ColAlign.LEFT -> ColAlign.CENTER
+        ColAlign.CENTER -> ColAlign.RIGHT
+        ColAlign.RIGHT -> ColAlign.NONE
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .border(1.5.dp, gruvboxLilac, RoundedCornerShape(8.dp))
+            .background(gruvboxSurface, RoundedCornerShape(8.dp))
+            .padding(8.dp)
+    ) {
+        Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            // Cabeçalho (negrito) + botão de remover a última coluna.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                table.headers.forEachIndexed { c, h ->
+                    TextField(
+                        value = h,
+                        onValueChange = { nv ->
+                            apply(table.copy(headers = table.headers.toMutableList().also { it[c] = nv }))
+                        },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = fontSize.sp, fontWeight = FontWeight.Bold, textAlign = textAlignFor(alignOf(c))),
+                        colors = cellColors,
+                        modifier = Modifier.width(cellWidth).padding(2.dp)
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        if (table.headers.size > 1) {
+                            val last = table.headers.size - 1
+                            apply(
+                                table.copy(
+                                    headers = table.headers.filterIndexed { i, _ -> i != last },
+                                    rows = table.rows.map { row -> row.filterIndexed { i, _ -> i != last } }
+                                )
+                            )
+                        }
+                    },
+                    enabled = table.headers.size > 1,
+                    modifier = Modifier.size(36.dp)
+                ) { Icon(Icons.Default.Close, stringResource(R.string.remove), tint = if (table.headers.size > 1) gruvboxGray else gruvboxSurface) }
+            }
+            // Alinhamento por coluna (toca para alternar esquerda/centro/direita).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                table.headers.indices.forEach { c ->
+                    val a = alignOf(c)
+                    Box(modifier = Modifier.width(cellWidth), contentAlignment = Alignment.Center) {
+                        IconButton(
+                            onClick = {
+                                apply(table.copy(aligns = table.headers.indices.map { i -> if (i == c) cycleAlign(alignOf(i)) else alignOf(i) }))
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) { Icon(iconFor(a), stringResource(R.string.table_align), tint = if (a == ColAlign.NONE) gruvboxGray else gruvboxOrange) }
+                    }
+                }
+            }
+            // Linhas de dados + botão de remover a linha.
+            table.rows.forEachIndexed { r, row ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    table.headers.indices.forEach { c ->
+                        TextField(
+                            value = row.getOrElse(c) { "" },
+                            onValueChange = { nv ->
+                                apply(table.copy(rows = table.rows.mapIndexed { ri, rr ->
+                                    if (ri == r) {
+                                        val cells = rr.toMutableList()
+                                        while (cells.size < table.headers.size) cells.add("")
+                                        cells[c] = nv
+                                        cells
+                                    } else rr
+                                }))
+                            },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(fontSize = fontSize.sp, textAlign = textAlignFor(alignOf(c))),
+                            colors = cellColors,
+                            modifier = Modifier.width(cellWidth).padding(2.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { apply(table.copy(rows = table.rows.filterIndexed { i, _ -> i != r })) },
+                        modifier = Modifier.size(36.dp)
+                    ) { Icon(Icons.Default.Close, stringResource(R.string.remove), tint = gruvboxGray) }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = {
+                apply(
+                    table.copy(
+                        headers = table.headers + context.getString(R.string.table_col_name, table.headers.size + 1),
+                        rows = table.rows.map { it + "" }
+                    )
+                )
+            }) {
+                Icon(Icons.Default.Add, null, tint = gruvboxOrange, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(stringResource(R.string.table_columns), color = gruvboxOrange, fontSize = 13.sp)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            TextButton(onClick = {
+                apply(table.copy(rows = table.rows + listOf(List(table.headers.size) { "" })))
+            }) {
+                Icon(Icons.Default.Add, null, tint = gruvboxOrange, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(stringResource(R.string.table_rows), color = gruvboxOrange, fontSize = 13.sp)
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = onDone, modifier = Modifier.size(36.dp)) {
                 Icon(Icons.Default.Check, contentDescription = stringResource(R.string.finish_edit), tint = gruvboxLilac)
             }
         }

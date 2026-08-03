@@ -24,6 +24,7 @@
     <string name="project_manage_title">Gérer le projet</string>
     <string name="project_name_label">Nom du projet</string>
     <string name="project_files_order">Ordre des fichiers</string>
+    <string name="reorder_handle">Réorganiser</string>
     <string name="move_up">Monter</string>
     <string name="move_down">Descendre</string>
     <string name="remove">Retirer</string>
@@ -128,4 +129,30 @@
     <string name="notif_next">Suivant</string>
     <string name="notif_stop">Arrêter</string>
     <string name="notif_channel">Lecture à voix haute</string>
+
+    <string name="menu_share">Partager</string>
+    <string name="share_original">Fichier original (.md)</string>
+    <string name="share_html">HTML (rendu)</string>
+    <string name="share_pdf">PDF (rendu)</string>
+
+    <string name="tb_table">Tableau</string>
+    <string name="table_dialog_title">Insérer un tableau</string>
+    <string name="table_columns">Colonnes</string>
+    <string name="table_rows">Lignes</string>
+    <string name="table_col_name">Colonne %d</string>
+    <string name="table_align">Aligner</string>
+
+    <string name="tb_image">Image</string>
+    <string name="image_dialog_title">Insérer une image</string>
+    <string name="image_alt_label">Texte alternatif</string>
+    <string name="image_url_label">URL de l\'image</string>
+    <string name="image_pick_device">Choisir sur l\'appareil</string>
+
+    <string name="find_replace_title">Rechercher et remplacer</string>
+    <string name="find_hint">Rechercher</string>
+    <string name="replace_hint">Remplacer</string>
+    <string name="replace_all">Tout remplacer</string>
+    <string name="find_case_cd">Respecter la casse</string>
+    <string name="find_previous">Occurrence précédente</string>
+    <string name="find_next">Occurrence suivante</string>
 </resources>

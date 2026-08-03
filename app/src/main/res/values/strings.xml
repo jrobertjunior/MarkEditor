@@ -31,6 +31,7 @@
     <string name="project_manage_title">Gerenciar projeto</string>
     <string name="project_name_label">Nome do projeto</string>
     <string name="project_files_order">Ordem dos arquivos</string>
+    <string name="reorder_handle">Reordenar</string>
     <string name="move_up">Subir</string>
     <string name="move_down">Descer</string>
     <string name="remove">Remover</string>
@@ -143,6 +144,37 @@
     <string name="notif_next">Próximo</string>
     <string name="notif_stop">Parar</string>
     <string name="notif_channel">Leitura em voz alta</string>
+
+    <!-- Compartilhar -->
+    <string name="menu_share">Compartilhar</string>
+    <string name="share_original">Arquivo original (.md)</string>
+    <string name="share_html">HTML (renderizado)</string>
+    <string name="share_pdf">PDF (renderizado)</string>
+
+    <!-- Tabela -->
+    <string name="tb_table">Tabela</string>
+    <string name="table_dialog_title">Inserir tabela</string>
+    <string name="table_columns">Colunas</string>
+    <string name="table_rows">Linhas</string>
+    <string name="table_col_name">Coluna %d</string>
+    <string name="table_align">Alinhar</string>
+
+    <!-- Imagem -->
+    <string name="tb_image">Imagem</string>
+    <string name="image_dialog_title">Inserir imagem</string>
+    <string name="image_alt_label">Texto alternativo</string>
+    <string name="image_url_label">URL da imagem</string>
+    <string name="image_pick_device">Escolher do aparelho</string>
+
+    <!-- Buscar e substituir -->
+    <string name="find_replace_title">Buscar e substituir</string>
+    <string name="find_hint">Buscar</string>
+    <string name="replace_hint">Substituir</string>
+    <string name="replace_all">Substituir tudo</string>
+    <string name="find_case_cd">Diferenciar maiúsculas</string>
+    <string name="find_previous">Ocorrência anterior</string>
+    <string name="find_next">Próxima ocorrência</string>
+    <string name="match_count">%1$d/%2$d</string>
 
     <!-- Nomes de idioma (endônimos, iguais em qualquer idioma) -->
     <string name="lang_pt">Português</string>

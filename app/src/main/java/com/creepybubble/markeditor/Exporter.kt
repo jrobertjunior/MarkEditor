@@ -3,24 +3,36 @@ package com.creepybubble.markeditor
 import android.content.Context
 import android.graphics.Color
 import android.graphics.pdf.PdfDocument
+import android.net.Uri
+import android.util.Base64
 import android.view.View
+import android.webkit.MimeTypeMap
 import android.widget.TextView
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
+import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
+import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
+import java.io.File
 import java.io.OutputStream
 
-/** Converte o markdown em um documento HTML completo e estilizado. */
-fun renderFullHtml(title: String, markdown: String): String {
-    val body = try {
-        val parser = Parser.builder().build()
-        val renderer = HtmlRenderer.builder().build()
+/**
+ * Converte o markdown em um documento HTML completo e estilizado.
+ * Se um [context] for informado, imagens locais (content://, file://) são embutidas
+ * em base64 para o HTML ficar portátil (funciona fora do aparelho).
+ */
+fun renderFullHtml(title: String, markdown: String, context: Context? = null): String {
+    var body = try {
+        val extensions = listOf(TablesExtension.create(), StrikethroughExtension.create())
+        val parser = Parser.builder().extensions(extensions).build()
+        val renderer = HtmlRenderer.builder().extensions(extensions).build()
         renderer.render(parser.parse(markdown))
     } catch (e: Exception) {
         "<pre>" + escapeHtml(markdown) + "</pre>"
     }
+    if (context != null) body = embedLocalImages(context, body)
     val safeTitle = escapeHtml(title)
     return """<!DOCTYPE html>
 <html lang="pt-BR">
@@ -49,6 +61,41 @@ $body
 
 private fun escapeHtml(s: String): String =
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+private val imgSrcRegex = Regex("""(<img\b[^>]*?\bsrc=["'])([^"']+)(["'])""", RegexOption.IGNORE_CASE)
+
+/** Substitui os src de imagens locais por data URIs base64, deixando o HTML autônomo. */
+private fun embedLocalImages(context: Context, html: String): String =
+    imgSrcRegex.replace(html) { m ->
+        val src = m.groupValues[2]
+        val dataUri = localImageToDataUri(context, src)
+        if (dataUri != null) m.groupValues[1] + dataUri + m.groupValues[3] else m.value
+    }
+
+/** Lê uma imagem local (content:// ou file://) e devolve um data URI base64, ou null. */
+private fun localImageToDataUri(context: Context, src: String): String? {
+    return try {
+        when {
+            src.startsWith("content://") -> {
+                val uri = Uri.parse(src)
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+                val mime = context.contentResolver.getType(uri) ?: "image/*"
+                "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+            }
+            src.startsWith("file://") || src.startsWith("/") -> {
+                val path = if (src.startsWith("file://")) Uri.parse(src).path else src
+                val file = File(path ?: return null)
+                if (!file.exists()) return null
+                val ext = file.extension.lowercase()
+                val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "image/*"
+                "data:$mime;base64," + Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+            }
+            else -> null // http(s) e data: já são portáteis
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
 
 /**
  * Gera um PDF paginado a partir do markdown. Renderiza num TextView com o Markwon e

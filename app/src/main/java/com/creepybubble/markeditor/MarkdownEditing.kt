@@ -80,6 +80,85 @@ fun toggleTaskLine(block: String, lineIndex: Int): String {
     return lines.joinToString("\n")
 }
 
+/** Alinhamento de uma coluna (NONE = padrão, geralmente à esquerda). */
+enum class ColAlign { NONE, LEFT, CENTER, RIGHT }
+
+/** Modelo simples de uma tabela Markdown, com alinhamento por coluna. */
+data class MarkdownTable(
+    val headers: List<String>,
+    val rows: List<List<String>>,
+    val aligns: List<ColAlign> = emptyList()
+)
+
+private fun parseAlign(cell: String): ColAlign {
+    val s = cell.trim()
+    val left = s.startsWith(":")
+    val right = s.endsWith(":")
+    return when {
+        left && right -> ColAlign.CENTER
+        right -> ColAlign.RIGHT
+        left -> ColAlign.LEFT
+        else -> ColAlign.NONE
+    }
+}
+
+private fun alignMarker(a: ColAlign): String = when (a) {
+    ColAlign.LEFT -> ":---"
+    ColAlign.CENTER -> ":--:"
+    ColAlign.RIGHT -> "---:"
+    ColAlign.NONE -> "---"
+}
+
+private val tableSeparatorRegex =
+    Regex("^\\s*\\|?\\s*:?-{1,}:?\\s*(\\|\\s*:?-{1,}:?\\s*)*\\|?\\s*$")
+
+/** Um bloco é tabela se a 1ª linha tem pipe e a 2ª é a linha separadora (---). */
+fun isTableBlock(block: String): Boolean {
+    val lines = block.split("\n").filter { it.isNotBlank() }
+    if (lines.size < 2) return false
+    return lines[0].contains("|") && tableSeparatorRegex.matches(lines[1])
+}
+
+/** Divide uma linha de tabela em células, removendo os pipes das bordas. */
+private fun splitTableRow(line: String): List<String> {
+    var s = line.trim()
+    if (s.startsWith("|")) s = s.substring(1)
+    if (s.endsWith("|")) s = s.dropLast(1)
+    return s.split("|").map { it.trim() }
+}
+
+fun parseTable(block: String): MarkdownTable {
+    val lines = block.split("\n").filter { it.isNotBlank() }
+    val headers = if (lines.isNotEmpty()) splitTableRow(lines[0]) else listOf("")
+    val cols = headers.size.coerceAtLeast(1)
+    val aligns = (if (lines.size >= 2) splitTableRow(lines[1]).map { parseAlign(it) } else emptyList()).toMutableList()
+    while (aligns.size < cols) aligns.add(ColAlign.NONE)
+    val rows = lines.drop(2).map { line ->
+        val cells = splitTableRow(line).toMutableList()
+        while (cells.size < cols) cells.add("")
+        cells.take(cols)
+    }
+    return MarkdownTable(headers, rows, aligns.take(cols))
+}
+
+fun buildTable(table: MarkdownTable): String {
+    val cols = table.headers.size.coerceAtLeast(1)
+    val aligns = (0 until cols).map { table.aligns.getOrElse(it) { ColAlign.NONE } }
+    fun renderRow(cells: List<String>): String {
+        val c = cells.toMutableList()
+        while (c.size < cols) c.add("")
+        return "| " + c.take(cols).joinToString(" | ") { cell ->
+            val v = cell.trim()
+            if (v.isEmpty()) " " else v
+        } + " |"
+    }
+    val sb = StringBuilder()
+    sb.append(renderRow(table.headers)).append("\n")
+    sb.append("| ").append(aligns.joinToString(" | ") { alignMarker(it) }).append(" |")
+    for (r in table.rows) sb.append("\n").append(renderRow(r))
+    return sb.toString()
+}
+
 /** Remove comentários HTML (<!-- ... -->) do markdown, para não renderizar/ler. */
 fun removeComments(md: String): String =
     md.replace(Regex("(?s)<!--.*?-->"), "")

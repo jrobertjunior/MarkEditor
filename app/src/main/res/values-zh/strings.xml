@@ -24,6 +24,7 @@
     <string name="project_manage_title">管理项目</string>
     <string name="project_name_label">项目名称</string>
     <string name="project_files_order">文件顺序</string>
+    <string name="reorder_handle">重新排序</string>
     <string name="move_up">上移</string>
     <string name="move_down">下移</string>
     <string name="remove">移除</string>
@@ -128,4 +129,30 @@
     <string name="notif_next">下一个</string>
     <string name="notif_stop">停止</string>
     <string name="notif_channel">朗读</string>
+
+    <string name="menu_share">分享</string>
+    <string name="share_original">原始文件 (.md)</string>
+    <string name="share_html">HTML（已渲染）</string>
+    <string name="share_pdf">PDF（已渲染）</string>
+
+    <string name="tb_table">表格</string>
+    <string name="table_dialog_title">插入表格</string>
+    <string name="table_columns">列</string>
+    <string name="table_rows">行</string>
+    <string name="table_col_name">列 %d</string>
+    <string name="table_align">对齐</string>
+
+    <string name="tb_image">图片</string>
+    <string name="image_dialog_title">插入图片</string>
+    <string name="image_alt_label">替代文本</string>
+    <string name="image_url_label">图片网址</string>
+    <string name="image_pick_device">从设备选择</string>
+
+    <string name="find_replace_title">查找和替换</string>
+    <string name="find_hint">查找</string>
+    <string name="replace_hint">替换</string>
+    <string name="replace_all">全部替换</string>
+    <string name="find_case_cd">区分大小写</string>
+    <string name="find_previous">上一个匹配</string>
+    <string name="find_next">下一个匹配</string>
 </resources>

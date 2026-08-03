@@ -24,6 +24,7 @@
     <string name="project_manage_title">Gestionar proyecto</string>
     <string name="project_name_label">Nombre del proyecto</string>
     <string name="project_files_order">Orden de los archivos</string>
+    <string name="reorder_handle">Reordenar</string>
     <string name="move_up">Subir</string>
     <string name="move_down">Bajar</string>
     <string name="remove">Quitar</string>
@@ -128,4 +129,30 @@
     <string name="notif_next">Siguiente</string>
     <string name="notif_stop">Detener</string>
     <string name="notif_channel">Lectura en voz alta</string>
+
+    <string name="menu_share">Compartir</string>
+    <string name="share_original">Archivo original (.md)</string>
+    <string name="share_html">HTML (renderizado)</string>
+    <string name="share_pdf">PDF (renderizado)</string>
+
+    <string name="tb_table">Tabla</string>
+    <string name="table_dialog_title">Insertar tabla</string>
+    <string name="table_columns">Columnas</string>
+    <string name="table_rows">Filas</string>
+    <string name="table_col_name">Columna %d</string>
+    <string name="table_align">Alinear</string>
+
+    <string name="tb_image">Imagen</string>
+    <string name="image_dialog_title">Insertar imagen</string>
+    <string name="image_alt_label">Texto alternativo</string>
+    <string name="image_url_label">URL de la imagen</string>
+    <string name="image_pick_device">Elegir del dispositivo</string>
+
+    <string name="find_replace_title">Buscar y reemplazar</string>
+    <string name="find_hint">Buscar</string>
+    <string name="replace_hint">Reemplazar</string>
+    <string name="replace_all">Reemplazar todo</string>
+    <string name="find_case_cd">Distinguir mayúsculas</string>
+    <string name="find_previous">Coincidencia anterior</string>
+    <string name="find_next">Coincidencia siguiente</string>
 </resources>

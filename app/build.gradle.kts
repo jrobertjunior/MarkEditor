@@ -12,8 +12,8 @@ android {
         applicationId = "com.creepybubble.markeditor"
         minSdk = 36
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.4"
+        versionCode = 3
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -61,6 +61,11 @@ dependencies {
     implementation("io.noties.markwon:ext-tables:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:ext-latex:4.6.2")
+    // Renderização de imagens no preview (web, arquivo, data e content://).
+    implementation("io.noties.markwon:image:4.6.2")
+    // Extensões do CommonMark para a exportação HTML/PDF (tabelas e tachado ~~ ~~).
+    implementation("com.atlassian.commonmark:commonmark-ext-gfm-tables:0.14.0")
+    implementation("com.atlassian.commonmark:commonmark-ext-gfm-strikethrough:0.14.0")
     // A exportação para HTML usa o commonmark (org.commonmark.*) que o Markwon já traz.
     implementation("androidx.compose.material:material-icons-extended")
     // MediaSession + notificação de mídia para a leitura em segundo plano.

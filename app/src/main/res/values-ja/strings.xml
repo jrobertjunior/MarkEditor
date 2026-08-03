@@ -24,6 +24,7 @@
     <string name="project_manage_title">プロジェクトを管理</string>
     <string name="project_name_label">プロジェクト名</string>
     <string name="project_files_order">ファイルの順序</string>
+    <string name="reorder_handle">並べ替え</string>
     <string name="move_up">上へ</string>
     <string name="move_down">下へ</string>
     <string name="remove">削除</string>
@@ -128,4 +129,30 @@
     <string name="notif_next">次へ</string>
     <string name="notif_stop">停止</string>
     <string name="notif_channel">読み上げ</string>
+
+    <string name="menu_share">共有</string>
+    <string name="share_original">元のファイル (.md)</string>
+    <string name="share_html">HTML（レンダリング済み）</string>
+    <string name="share_pdf">PDF（レンダリング済み）</string>
+
+    <string name="tb_table">表</string>
+    <string name="table_dialog_title">表を挿入</string>
+    <string name="table_columns">列</string>
+    <string name="table_rows">行</string>
+    <string name="table_col_name">列 %d</string>
+    <string name="table_align">配置</string>
+
+    <string name="tb_image">画像</string>
+    <string name="image_dialog_title">画像を挿入</string>
+    <string name="image_alt_label">代替テキスト</string>
+    <string name="image_url_label">画像 URL</string>
+    <string name="image_pick_device">端末から選択</string>
+
+    <string name="find_replace_title">検索と置換</string>
+    <string name="find_hint">検索</string>
+    <string name="replace_hint">置換</string>
+    <string name="replace_all">すべて置換</string>
+    <string name="find_case_cd">大文字と小文字を区別</string>
+    <string name="find_previous">前の一致</string>
+    <string name="find_next">次の一致</string>
 </resources>
