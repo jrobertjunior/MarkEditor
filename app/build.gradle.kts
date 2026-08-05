@@ -12,8 +12,8 @@ android {
         applicationId = "com.creepybubble.markeditor"
         minSdk = 36
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.5"
+        versionCode = 4
+        versionName = "1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
