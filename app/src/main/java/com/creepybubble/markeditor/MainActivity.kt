@@ -330,6 +330,11 @@ fun MarkEditorApp(
     var selectBlockOffset by remember { mutableStateOf<Int?>(null) }
     // Bloco (no preview) onde está a ocorrência atual, para realçar a palavra.
     var searchBlockIndex by remember { mutableStateOf(-1) }
+
+    // Dicionário: palavra consultada + estado da busca.
+    var dictWord by remember { mutableStateOf<String?>(null) }
+    var dictLoading by remember { mutableStateOf(false) }
+    var dictResult by remember { mutableStateOf<DictResult?>(null) }
     var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
 
     // Rascunho do diálogo de projeto: arquivos (na ordem) + nome, antes de confirmar.
@@ -1051,6 +1056,39 @@ fun MarkEditorApp(
         )
     }
 
+    dictWord?.let { word ->
+        AlertDialog(
+            onDismissRequest = { dictWord = null },
+            title = { Text(word, color = gruvboxOrange, fontWeight = FontWeight.Bold) },
+            containerColor = gruvboxSurface,
+            text = {
+                val res = dictResult
+                when {
+                    dictLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = gruvboxOrange, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(stringResource(R.string.dict_searching), color = gruvboxGray)
+                    }
+                    res is DictResult.Ok -> Column(modifier = Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                        res.senses.forEach { sense ->
+                            val header = listOf(sense.language, sense.partOfSpeech).filter { it.isNotBlank() }.joinToString(" · ")
+                            if (header.isNotBlank()) Text(header, color = gruvboxOrange, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            sense.definitions.forEachIndexed { i, d ->
+                                Text("${i + 1}. $d", color = gruvboxText, fontSize = 14.sp, modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 2.dp))
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                    res == DictResult.NotFound -> Text(stringResource(R.string.dict_not_found), color = gruvboxGray)
+                    else -> Text(stringResource(R.string.dict_error), color = gruvboxGray)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { dictWord = null }) { Text(stringResource(R.string.action_close), color = gruvboxOrange) }
+            }
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -1560,6 +1598,18 @@ fun MarkEditorApp(
                     }
                 }
 
+                // Duplo-toque numa palavra do preview: consulta o dicionário (Wiktionary online).
+                val onWordLookup: (String) -> Unit = { word ->
+                    dictWord = word
+                    dictResult = null
+                    dictLoading = true
+                    coroutineScope.launch {
+                        val lang = LocaleHelper.savedLanguage(context).ifBlank { java.util.Locale.getDefault().language }
+                        dictResult = DictionaryClient.lookup(word, lang)
+                        dictLoading = false
+                    }
+                }
+
                 // Ao alternar edição <-> visualização, leva o outro painel ao mesmo bloco.
                 var firstModeSwitch by remember { mutableStateOf(true) }
                 // Bloco "em foco" reportado pelo preview (selecionado > em leitura > topo).
@@ -1619,6 +1669,7 @@ fun MarkEditorApp(
                                     searchTerm = if (showFindBar && searchBlockIndex >= 0) findQuery else null,
                                     searchBlockIndex = searchBlockIndex,
                                     searchCaseSensitive = caseSensitive,
+                                    onWordLookup = onWordLookup,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
@@ -1652,6 +1703,7 @@ fun MarkEditorApp(
                                     searchTerm = if (showFindBar && searchBlockIndex >= 0) findQuery else null,
                                     searchBlockIndex = searchBlockIndex,
                                     searchCaseSensitive = caseSensitive,
+                                    onWordLookup = onWordLookup,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }

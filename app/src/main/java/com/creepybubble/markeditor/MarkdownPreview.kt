@@ -4,6 +4,7 @@ import android.content.Intent
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
+import android.view.MotionEvent
 import android.widget.TextView
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -58,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -135,6 +137,8 @@ fun MarkdownPreview(
     searchTerm: String? = null,
     searchBlockIndex: Int = -1,
     searchCaseSensitive: Boolean = false,
+    // Duplo-toque numa palavra do texto renderizado -> consulta no dicionário.
+    onWordLookup: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -156,6 +160,9 @@ fun MarkdownPreview(
     val blocks = remember { mutableStateListOf<String>().apply { addAll(splitIntoBlocks(text)) } }
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var selectedBlockIndex by remember { mutableStateOf<Int?>(null) }
+    // Dicionário: palavra tocada (realçada) e o bloco dela. Tocar de novo na mesma abre a definição.
+    var tapWord by remember { mutableStateOf<String?>(null) }
+    var tapWordBlock by remember { mutableStateOf(-1) }
     val listState = rememberLazyListState(initialScrollIndex, initialScrollOffset)
     val tts = rememberTtsManager()
     var showTtsSettings by remember { mutableStateOf(false) }
@@ -177,6 +184,8 @@ fun MarkdownPreview(
             blocks.addAll(splitIntoBlocks(text))
             editingIndex = null
             selectedBlockIndex = null
+            tapWord = null
+            tapWordBlock = -1
         }
     }
 
@@ -406,6 +415,18 @@ fun MarkdownPreview(
                             highlight = highlight,
                             searchTerm = if (index == searchBlockIndex) searchTerm else null,
                             searchCaseSensitive = searchCaseSensitive,
+                            tapTerm = if (index == tapWordBlock) tapWord else null,
+                            blockIndex = index,
+                            onWordTap = { word, b ->
+                                if (word == tapWord && b == tapWordBlock) {
+                                    onWordLookup(word) // 2º toque na mesma palavra -> definição
+                                } else {
+                                    tapWord = word
+                                    tapWordBlock = b
+                                    selectedBlockIndex = b
+                                    editingIndex = null
+                                }
+                            },
                             fontSize = fontSize,
                             onClick = onClick,
                             onLongClick = onLongClick
@@ -709,10 +730,19 @@ private fun RenderedBlock(
     highlight: WordHighlight?,
     searchTerm: String?,
     searchCaseSensitive: Boolean,
+    tapTerm: String?,
+    blockIndex: Int,
+    onWordTap: (String, Int) -> Unit,
     fontSize: Float,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    // Mantém as callbacks sempre atuais sem recriar os listeners.
+    val onClickState = rememberUpdatedState(onClick)
+    val onLongClickState = rememberUpdatedState(onLongClick)
+    val onWordTapState = rememberUpdatedState(onWordTap)
+    val blockIndexState = rememberUpdatedState(blockIndex)
+
     // Cores por estado: leitura = laranja, seleção = azul, edição (outro composable) = lilás.
     val borderColor: Color? = when {
         isReading -> gruvboxOrange
@@ -729,12 +759,27 @@ private fun RenderedBlock(
     AndroidView(
         modifier = boxModifier,
         factory = { ctx ->
-            TextView(ctx).apply {
+            val tv = TextView(ctx).apply {
                 setPadding(16, 8, 16, 8)
                 isClickable = true
                 isFocusable = false
                 isLongClickable = true
             }
+            // Guardamos a posição do toque SEM consumir o evento (senão a lista não rola).
+            var lastX = 0f
+            var lastY = 0f
+            tv.setOnTouchListener { _, ev ->
+                if (ev.action == MotionEvent.ACTION_DOWN) { lastX = ev.x; lastY = ev.y }
+                false
+            }
+            // Toque numa palavra: 1º realça, 2º (na mesma) abre o dicionário. Toque em área
+            // vazia: seleciona o bloco. Segurar: edita.
+            tv.setOnClickListener {
+                val word = wordAt(tv, lastX, lastY)
+                if (word != null) onWordTapState.value(word, blockIndexState.value) else onClickState.value()
+            }
+            tv.setOnLongClickListener { onLongClickState.value(); true }
+            tv
         },
         update = { tv ->
             tv.textSize = fontSize
@@ -743,10 +788,26 @@ private fun RenderedBlock(
             markwon.setMarkdown(tv, removeComments(source))
             applyWordHighlight(tv, highlight)
             applySearchHighlight(tv, searchTerm, searchCaseSensitive)
-            tv.setOnClickListener { onClick() }
-            tv.setOnLongClickListener { onLongClick(); true }
+            applySearchHighlight(tv, tapTerm, true) // realce da palavra tocada (exata)
         }
     )
+}
+
+/** Extrai a palavra sob as coordenadas (x,y) do toque num TextView renderizado. */
+private fun wordAt(tv: TextView, x: Float, y: Float): String? {
+    val layout = tv.layout ?: return null
+    val line = layout.getLineForVertical((y - tv.totalPaddingTop + tv.scrollY).toInt())
+    val offset = layout.getOffsetForHorizontal(line, x - tv.totalPaddingLeft + tv.scrollX)
+    val text = tv.text?.toString() ?: return null
+    if (offset < 0 || offset > text.length) return null
+    var s = offset.coerceIn(0, text.length)
+    var e = s
+    while (s > 0 && text[s - 1].isLetterOrDigit()) s--
+    while (e < text.length && text[e].isLetterOrDigit()) e++
+    if (e <= s) return null
+    var word = text.substring(s, e)
+    if (word.length > 40) word = word.substring(0, 40)
+    return word.ifBlank { null }
 }
 
 /**

@@ -135,6 +135,10 @@
     <string name="share_html">HTML (렌더링됨)</string>
     <string name="share_pdf">PDF (렌더링됨)</string>
 
+    <string name="dict_searching">정의 검색 중…</string>
+    <string name="dict_not_found">정의를 찾을 수 없습니다.</string>
+    <string name="dict_error">정의를 가져오지 못했습니다.</string>
+
     <string name="tb_table">표</string>
     <string name="table_dialog_title">표 삽입</string>
     <string name="table_columns">열</string>

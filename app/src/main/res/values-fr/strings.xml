@@ -135,6 +135,10 @@
     <string name="share_html">HTML (rendu)</string>
     <string name="share_pdf">PDF (rendu)</string>
 
+    <string name="dict_searching">Recherche de la définition…</string>
+    <string name="dict_not_found">Aucune définition trouvée.</string>
+    <string name="dict_error">Impossible de récupérer la définition.</string>
+
     <string name="tb_table">Tableau</string>
     <string name="table_dialog_title">Insérer un tableau</string>
     <string name="table_columns">Colonnes</string>

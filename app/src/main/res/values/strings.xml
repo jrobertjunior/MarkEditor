@@ -151,6 +151,11 @@
     <string name="share_html">HTML (renderizado)</string>
     <string name="share_pdf">PDF (renderizado)</string>
 
+    <!-- Dicionário -->
+    <string name="dict_searching">Buscando definição…</string>
+    <string name="dict_not_found">Nenhuma definição encontrada.</string>
+    <string name="dict_error">Não foi possível buscar a definição.</string>
+
     <!-- Tabela -->
     <string name="tb_table">Tabela</string>
     <string name="table_dialog_title">Inserir tabela</string>

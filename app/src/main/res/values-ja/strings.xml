@@ -135,6 +135,10 @@
     <string name="share_html">HTML（レンダリング済み）</string>
     <string name="share_pdf">PDF（レンダリング済み）</string>
 
+    <string name="dict_searching">定義を検索中…</string>
+    <string name="dict_not_found">定義が見つかりませんでした。</string>
+    <string name="dict_error">定義を取得できませんでした。</string>
+
     <string name="tb_table">表</string>
     <string name="table_dialog_title">表を挿入</string>
     <string name="table_columns">列</string>
