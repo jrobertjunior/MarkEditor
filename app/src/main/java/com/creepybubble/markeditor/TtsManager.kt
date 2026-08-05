@@ -49,7 +49,7 @@ private val sampleByLanguage = mapOf(
  * Blocos de código cercados por ``` são descartados (ninguém quer ouvir código).
  */
 fun stripMarkdown(input: String): String {
-    var s = input
+    var s = input.replace("\r", "") // normaliza CRLF (arquivos do Windows)
 
     // Comentários HTML: fora (não devem ser lidos).
     s = s.replace(Regex("(?s)<!--.*?-->"), " ")
@@ -88,6 +88,29 @@ fun stripMarkdown(input: String): String {
 }
 
 /**
+ * Divide um texto em pedaços que caibam no limite do TextToSpeech, quebrando de
+ * preferência no fim de frase (ou num espaço) para não cortar palavras no meio.
+ */
+fun splitForTts(text: String, maxLen: Int): List<String> {
+    if (text.length <= maxLen) return listOf(text)
+    val out = ArrayList<String>()
+    var start = 0
+    while (start < text.length) {
+        var end = (start + maxLen).coerceAtMost(text.length)
+        if (end < text.length) {
+            val window = text.substring(start, end)
+            var cut = window.lastIndexOfAny(charArrayOf('.', '!', '?', '\n'))
+            if (cut < maxLen / 2) cut = window.lastIndexOf(' ')
+            if (cut >= maxLen / 2) end = start + cut + 1
+        }
+        val piece = text.substring(start, end)
+        if (piece.isNotBlank()) out.add(piece)
+        start = end
+    }
+    return out
+}
+
+/**
  * Envolve o TextToSpeech nativo do Android. Permite escolher o motor (Google, Samsung…)
  * e a voz, além de controlar a leitura (ler, pausar, pular, parar). As escolhas de
  * motor/voz ficam salvas em SharedPreferences e sobrevivem ao fechar o app.
@@ -117,6 +140,9 @@ class TtsManager private constructor(context: Context) {
     private var tts: TextToSpeech? = null
     private var ready = false
     private var lastIndex = -1
+    // Id da última fala enfileirada (bloco#pedaço). Blocos grandes são fatiados em vários,
+    // então usamos este id para saber quando a leitura realmente terminou.
+    private var lastUtteranceId: String? = null
     private var blocks: List<String> = emptyList()
     // Marca as interrupções que nós mesmos provocamos (pausar/pular/parar),
     // para não confundir com um erro real de síntese.
@@ -265,7 +291,8 @@ class TtsManager private constructor(context: Context) {
 
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
-                val i = utteranceId?.toIntOrNull() ?: return
+                // id no formato "bloco#pedaço"; o índice do bloco é o prefixo.
+                val i = utteranceId?.substringBefore('#')?.toIntOrNull() ?: return
                 mainHandler.post {
                     manualInterrupt = false
                     currentIndex = i
@@ -287,8 +314,8 @@ class TtsManager private constructor(context: Context) {
             }
 
             override fun onDone(utteranceId: String?) {
-                val i = utteranceId?.toIntOrNull() ?: return
-                if (i >= lastIndex) mainHandler.post {
+                // Só encerra quando o ÚLTIMO pedaço enfileirado terminar.
+                if (utteranceId != null && utteranceId == lastUtteranceId) mainHandler.post {
                     if (!manualInterrupt && !isPaused) resetState()
                 }
             }
@@ -496,9 +523,12 @@ class TtsManager private constructor(context: Context) {
         manualInterrupt = true
         engine.stop()
         lastIndex = -1
+        lastUtteranceId = null
         firstUtteranceIndex = index
         firstUtteranceOffset = charOffset.coerceAtLeast(0)
         var firstQueued = true
+        // Limite do motor (~4000). Fatiamos blocos grandes para não estourar (e travar a leitura).
+        val maxLen = (TextToSpeech.getMaxSpeechInputLength() - 100).coerceAtLeast(500)
 
         for (i in index.coerceAtLeast(0) until blocks.size) {
             var clean = stripMarkdown(blocks[i])
@@ -507,10 +537,14 @@ class TtsManager private constructor(context: Context) {
                 clean = if (charOffset < clean.length) clean.substring(charOffset) else ""
             }
             if (clean.isNotBlank()) {
-                val mode = if (firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-                engine.speak(clean, mode, null, i.toString())
-                firstQueued = false
-                lastIndex = i
+                for ((ci, chunk) in splitForTts(clean, maxLen).withIndex()) {
+                    val mode = if (firstQueued) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                    val id = "$i#$ci"
+                    engine.speak(chunk, mode, null, id)
+                    firstQueued = false
+                    lastUtteranceId = id
+                    lastIndex = i
+                }
             }
         }
 
