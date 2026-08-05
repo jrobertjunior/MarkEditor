@@ -124,6 +124,11 @@ fun MarkdownPreview(
     // e reporta a própria fração conforme o usuário rola (com flag de "rolando agora").
     externalScrollFraction: Float? = null,
     onScrollFraction: (Float, Boolean) -> Unit = { _, _ -> },
+    // Ao vir da edição: seleciona (borda azul) e rola até o bloco desse offset.
+    selectBlockOffset: Int? = null,
+    onSelectConsumed: () -> Unit = {},
+    // Reporta o bloco "em foco" (selecionado > em leitura > topo visível) para o app.
+    onActiveBlockChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -182,6 +187,29 @@ fun MarkdownPreview(
         }
         listState.animateScrollToItem(idx)
         onJumpConsumed()
+    }
+
+    // Ao voltar da edição: seleciona (borda azul) o bloco onde o cursor estava e rola até ele.
+    LaunchedEffect(selectBlockOffset) {
+        val target = selectBlockOffset ?: return@LaunchedEffect
+        var acc = 0
+        var idx = 0
+        for (i in blocks.indices) {
+            val len = blocks[i].length
+            if (target <= acc + len) { idx = i; break }
+            acc += len + 2
+            idx = i
+        }
+        editingIndex = null
+        selectedBlockIndex = idx
+        listState.animateScrollToItem(idx)
+        onSelectConsumed()
+    }
+
+    // Reporta o bloco em foco: selecionado, senão em leitura, senão o do topo.
+    LaunchedEffect(Unit) {
+        snapshotFlow { selectedBlockIndex ?: tts.currentIndex.takeIf { it >= 0 } ?: listState.firstVisibleItemIndex }
+            .collect { onActiveBlockChanged(it) }
     }
 
     // Enquanto lê, rola sozinho até o bloco atual e fecha qualquer edição aberta.

@@ -2,6 +2,9 @@ package com.creepybubble.markeditor
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -179,6 +182,49 @@ class TtsManager private constructor(context: Context) {
 
     private var sleepRunnable: Runnable? = null
 
+    // ---- Foco de áudio -----------------------------------------------------
+    // Sem isso, a leitura continua enquanto outro app fala (ex.: leitura de mensagem),
+    // sobrepondo os áudios. Com foco, pausamos quando perdemos e retomamos ao recuperar.
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var resumeOnFocusGain = false
+    private val audioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(audioAttributes)
+        .setWillPauseWhenDucked(true)
+        .setOnAudioFocusChangeListener({ change ->
+            mainHandler.post {
+                when (change) {
+                    AudioManager.AUDIOFOCUS_LOSS -> {
+                        // Perda permanente (ex.: música): pausa MANTENDO a posição, para
+                        // retomar de onde parou quando o usuário voltar. Não retoma sozinho.
+                        resumeOnFocusGain = false
+                        if (isSpeaking) pauseForFocus()
+                    }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                        // Perda temporária (ex.: leitura de mensagem): pausa e retoma no GAIN.
+                        if (isSpeaking) { resumeOnFocusGain = true; pauseForFocus() }
+                    }
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        if (resumeOnFocusGain) { resumeOnFocusGain = false; resume() }
+                    }
+                }
+            }
+        }, mainHandler)
+        .build()
+
+    private fun requestFocus() {
+        audioManager.requestAudioFocus(focusRequest)
+    }
+
+    private fun abandonFocus() {
+        audioManager.abandonAudioFocusRequest(focusRequest)
+        resumeOnFocusGain = false
+    }
+
     init {
         speechRate = prefs.getFloat("rate", 1.0f)
         pitch = prefs.getFloat("pitch", 1.0f)
@@ -214,6 +260,8 @@ class TtsManager private constructor(context: Context) {
         }
         engine.setSpeechRate(speechRate)
         engine.setPitch(pitch)
+        // Trata a fala como mídia de voz — assim ela participa do foco de áudio do sistema.
+        engine.setAudioAttributes(audioAttributes)
 
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
@@ -444,6 +492,7 @@ class TtsManager private constructor(context: Context) {
         val engine = tts ?: return
         if (!ready || blocks.isEmpty()) return
 
+        requestFocus()
         manualInterrupt = true
         engine.stop()
         lastIndex = -1
@@ -475,6 +524,17 @@ class TtsManager private constructor(context: Context) {
     }
 
     fun pause() {
+        // Pausa manual: libera o foco para outros apps poderem tocar.
+        manualInterrupt = true
+        tts?.stop()
+        isSpeaking = false
+        isPaused = true
+        abandonFocus()
+        notifyState()
+    }
+
+    /** Pausa por perda temporária de foco (não libera o foco, para retomar no GAIN). */
+    private fun pauseForFocus() {
         manualInterrupt = true
         tts?.stop()
         isSpeaking = false
@@ -502,6 +562,7 @@ class TtsManager private constructor(context: Context) {
     fun stop() {
         manualInterrupt = true
         tts?.stop()
+        abandonFocus()
         resetState()
     }
 
@@ -509,6 +570,7 @@ class TtsManager private constructor(context: Context) {
         sleepRunnable?.let { mainHandler.removeCallbacks(it) }
         sleepRunnable = null
         sleepTimerMinutes = 0
+        abandonFocus()
         tts?.stop()
         tts?.shutdown()
         tts = null

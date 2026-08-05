@@ -4,13 +4,15 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.IBinder
+import android.os.Bundle
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
+import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 
 /**
@@ -18,7 +20,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
  * notificação de mídia com controles (anterior, tocar/pausar, próximo, parar).
  * O motor em si vive no [TtsManager] singleton — o serviço só orquestra notificação/sessão.
  */
-class TtsService : Service() {
+class TtsService : MediaBrowserServiceCompat() {
 
     private lateinit var tts: TtsManager
     private var mediaSession: MediaSessionCompat? = null
@@ -37,10 +39,19 @@ class TtsService : Service() {
             })
             isActive = true
         }
+        // Liga a sessão ao media browser — é assim que o Android Auto/lock screen a controlam.
+        sessionToken = mediaSession!!.sessionToken
         tts.onStateChanged = { updateOrStop() }
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    // ---- Media browser (Android Auto) --------------------------------------
+    // App "só reprodução": sem árvore de navegação; o Auto mostra os controles da sessão ativa.
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot =
+        BrowserRoot(MEDIA_ROOT_ID, null)
+
+    override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+        result.sendResult(mutableListOf())
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -67,6 +78,14 @@ class TtsService : Service() {
 
     private fun buildNotification(): Notification {
         val playing = tts.isSpeaking
+
+        // Metadados para o Auto / tela de bloqueio mostrarem título e app.
+        mediaSession?.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, tts.currentTitle)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, getString(R.string.app_name))
+                .build()
+        )
 
         val state = if (playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
         mediaSession?.setPlaybackState(
@@ -139,6 +158,7 @@ class TtsService : Service() {
 
     companion object {
         const val CHANNEL_ID = "tts_playback"
+        const val MEDIA_ROOT_ID = "markeditor_root"
         const val NOTIF_ID = 1001
         const val ACTION_PLAY = "com.creepybubble.markeditor.PLAY"
         const val ACTION_PAUSE = "com.creepybubble.markeditor.PAUSE"

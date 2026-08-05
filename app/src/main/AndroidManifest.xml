@@ -26,6 +26,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MarkEditor">
+
+        <!-- Declara o app como app de mídia para o Android Auto -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -90,8 +95,12 @@
 
         <service
             android:name=".TtsService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
 
         <!-- Compartilhamento de arquivos temporários (aba do Android) -->
         <provider

@@ -69,6 +69,43 @@ fun newDoc(context: Context): Document = Document(
     initialText = context.getString(R.string.default_file_content)
 )
 
+// ---- Mapeamento bloco <-> posição (para sincronizar edição e visualização) ----
+
+/** Offset de um bloco no MODELO do preview (blocos unidos por "\n\n"): usado no jumpToIndex. */
+fun blockPlus2Offset(text: String, blockIndex: Int): Int {
+    val parts = splitIntoBlocks(text)
+    var pos = 0
+    for (i in 0 until blockIndex.coerceIn(0, parts.size)) pos += parts[i].length + 2
+    return pos
+}
+
+/** Offset REAL (no texto) onde o bloco começa: usado para rolar/posicionar o editor. */
+fun blockRealOffset(text: String, blockIndex: Int): Int {
+    val parts = splitIntoBlocks(text)
+    var from = 0
+    for (i in parts.indices) {
+        val p = parts[i]
+        val idx = if (p.isEmpty()) from else text.indexOf(p, from).let { if (it < 0) from else it }
+        if (i == blockIndex) return idx.coerceIn(0, text.length)
+        from = idx + p.length
+    }
+    return 0
+}
+
+/** Índice do bloco que contém (ou precede) um offset real do texto. */
+fun blockIndexForTextOffset(text: String, offset: Int): Int {
+    val parts = splitIntoBlocks(text)
+    var from = 0
+    var chosen = 0
+    for (i in parts.indices) {
+        val p = parts[i]
+        val idx = if (p.isEmpty()) from else text.indexOf(p, from).let { if (it < 0) from else it }
+        if (idx <= offset) chosen = i else break
+        from = idx + p.length
+    }
+    return chosen
+}
+
 fun getFileName(context: Context, uri: Uri): String {
     var result: String? = null
     if (uri.scheme == "content") {
@@ -1502,6 +1539,32 @@ fun MarkEditorApp(
                     }
                 }
 
+                // Ao alternar edição <-> visualização, leva o outro painel ao mesmo bloco.
+                var firstModeSwitch by remember { mutableStateOf(true) }
+                // Bloco "em foco" reportado pelo preview (selecionado > em leitura > topo).
+                var previewFocusBlock by remember { mutableIntStateOf(0) }
+                // Offset que pede ao preview para selecionar (borda azul) e rolar até o bloco.
+                var selectBlockOffset by remember { mutableStateOf<Int?>(null) }
+                LaunchedEffect(isPreviewMode) {
+                    if (firstModeSwitch) { firstModeSwitch = false; return@LaunchedEffect }
+                    if (currentProject != null) return@LaunchedEffect // projeto: textos diferentes
+                    val text = currentDoc.textState.text
+                    if (isPreviewMode) {
+                        // Edição -> visualização: seleciona (borda azul) o bloco DO CURSOR (último ponto editado).
+                        if (readFromOffset == null) {
+                            val cursor = currentDoc.textState.selection.start.coerceIn(0, text.length)
+                            selectBlockOffset = blockPlus2Offset(text, blockIndexForTextOffset(text, cursor))
+                        }
+                    } else {
+                        // Visualização -> edição: cursor no INÍCIO do bloco em foco do preview,
+                        // e foca o editor para o cursor aparecer.
+                        val off = blockRealOffset(text, previewFocusBlock).coerceIn(0, text.length)
+                        currentDoc.textState = currentDoc.textState.copy(selection = TextRange(off, off))
+                        delay(80)
+                        runCatching { focusRequester.requestFocus() }
+                    }
+                }
+
                 val previewPane: @Composable () -> Unit = {
                     Surface(modifier = Modifier.fillMaxSize().padding(16.dp), shape = RoundedCornerShape(12.dp), color = gruvboxSurface) {
                         // key() garante estado de scroll/seleção/leitura próprio para cada aba.
@@ -1531,6 +1594,9 @@ fun MarkEditorApp(
                                             coroutineScope.launch { editorScroll.scrollTo((frac * editorScroll.maxValue).toInt()) }
                                         }
                                     },
+                                    selectBlockOffset = selectBlockOffset,
+                                    onSelectConsumed = { selectBlockOffset = null },
+                                    onActiveBlockChanged = { previewFocusBlock = it },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
@@ -1558,6 +1624,9 @@ fun MarkEditorApp(
                                             coroutineScope.launch { editorScroll.scrollTo((frac * editorScroll.maxValue).toInt()) }
                                         }
                                     },
+                                    selectBlockOffset = selectBlockOffset,
+                                    onSelectConsumed = { selectBlockOffset = null },
+                                    onActiveBlockChanged = { previewFocusBlock = it },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
