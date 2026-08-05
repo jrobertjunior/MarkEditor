@@ -102,6 +102,8 @@ private data class WordHighlight(val spoken: String, val start: Int, val end: In
 
 // Laranja translúcido para o fundo da palavra que está sendo lida.
 private const val READING_WORD_BG: Int = 0x66D65D0E
+// Amarelo translúcido para as ocorrências da busca.
+private const val SEARCH_MATCH_BG: Int = 0x66FABD2F
 
 /**
  * Visualizador editável. Um toque num bloco o seleciona (ponto de partida da leitura);
@@ -129,6 +131,10 @@ fun MarkdownPreview(
     onSelectConsumed: () -> Unit = {},
     // Reporta o bloco "em foco" (selecionado > em leitura > topo visível) para o app.
     onActiveBlockChanged: (Int) -> Unit = {},
+    // Busca: realça as ocorrências do termo no bloco indicado.
+    searchTerm: String? = null,
+    searchBlockIndex: Int = -1,
+    searchCaseSensitive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -398,6 +404,8 @@ fun MarkdownPreview(
                             isReading = index == tts.currentIndex,
                             isSelected = index == selectedBlockIndex,
                             highlight = highlight,
+                            searchTerm = if (index == searchBlockIndex) searchTerm else null,
+                            searchCaseSensitive = searchCaseSensitive,
                             fontSize = fontSize,
                             onClick = onClick,
                             onLongClick = onLongClick
@@ -699,6 +707,8 @@ private fun RenderedBlock(
     isReading: Boolean,
     isSelected: Boolean,
     highlight: WordHighlight?,
+    searchTerm: String?,
+    searchCaseSensitive: Boolean,
     fontSize: Float,
     onClick: () -> Unit,
     onLongClick: () -> Unit
@@ -732,6 +742,7 @@ private fun RenderedBlock(
             tv.setBackgroundColor(gruvboxSurface.toArgb())
             markwon.setMarkdown(tv, removeComments(source))
             applyWordHighlight(tv, highlight)
+            applySearchHighlight(tv, searchTerm, searchCaseSensitive)
             tv.setOnClickListener { onClick() }
             tv.setOnLongClickListener { onLongClick(); true }
         }
@@ -767,6 +778,27 @@ private fun applyWordHighlight(tv: TextView, highlight: WordHighlight?) {
         (idx + word.length).coerceAtMost(spannable.length),
         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
     )
+    tv.text = spannable
+}
+
+/** Realça (fundo amarelo) todas as ocorrências do termo buscado no texto renderizado. */
+private fun applySearchHighlight(tv: TextView, term: String?, caseSensitive: Boolean) {
+    if (term.isNullOrEmpty()) return
+    val rendered = tv.text.toString()
+    var idx = rendered.indexOf(term, 0, ignoreCase = !caseSensitive)
+    if (idx < 0) return
+    val spannable = SpannableString(tv.text)
+    var count = 0
+    while (idx >= 0 && count < 500) {
+        spannable.setSpan(
+            BackgroundColorSpan(SEARCH_MATCH_BG),
+            idx,
+            (idx + term.length).coerceAtMost(spannable.length),
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        count++
+        idx = rendered.indexOf(term, idx + term.length, ignoreCase = !caseSensitive)
+    }
     tv.text = spannable
 }
 

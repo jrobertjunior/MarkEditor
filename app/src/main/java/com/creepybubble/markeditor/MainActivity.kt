@@ -326,6 +326,10 @@ fun MarkEditorApp(
     var replaceQuery by remember { mutableStateOf("") }
     var caseSensitive by remember { mutableStateOf(false) }
     var matchPos by remember { mutableStateOf(-1) } // índice 0-based do match atual; -1 = nenhum
+    // Pede ao preview para selecionar (borda azul) + rolar até o bloco de um offset.
+    var selectBlockOffset by remember { mutableStateOf<Int?>(null) }
+    // Bloco (no preview) onde está a ocorrência atual, para realçar a palavra.
+    var searchBlockIndex by remember { mutableStateOf(-1) }
     var recents by remember { mutableStateOf(RecentFiles.load(appPrefs)) }
 
     // Rascunho do diálogo de projeto: arquivos (na ordem) + nome, antes de confirmar.
@@ -379,25 +383,43 @@ fun MarkEditorApp(
         updateTextState(TextFieldValue(text = newText, selection = TextRange(cursor + snippet.length)))
     }
 
-    // Buscar: posições (0-based) de todas as ocorrências, sem sobreposição.
-    val findMatches = remember(findQuery, currentDoc.textState.text, caseSensitive) {
-        if (findQuery.isEmpty()) emptyList()
-        else {
-            val hay = if (caseSensitive) currentDoc.textState.text else currentDoc.textState.text.lowercase()
-            val needle = if (caseSensitive) findQuery else findQuery.lowercase()
-            val res = ArrayList<Int>()
-            var i = hay.indexOf(needle)
-            while (i >= 0) { res.add(i); i = hay.indexOf(needle, i + needle.length) }
-            res
+    // Buscar: posições (0-based) das ocorrências. derivedStateOf evita recalcular/comparar
+    // o texto inteiro a cada recomposição (só recalcula quando texto/termo/caixa mudam) e
+    // usa indexOf com ignoreCase (sem copiar o documento em minúsculas). Recriado ao trocar
+    // de documento/parte (id) para não capturar um Document velho.
+    val findMatches by remember(currentDoc.id) {
+        derivedStateOf {
+            val q = findQuery
+            if (q.isEmpty() || !showFindBar) emptyList()
+            else {
+                val hay = currentDoc.textState.text
+                val res = ArrayList<Int>()
+                var i = hay.indexOf(q, 0, ignoreCase = !caseSensitive)
+                while (i >= 0) {
+                    res.add(i)
+                    if (res.size >= 5000) break // limite defensivo p/ documentos gigantes
+                    i = hay.indexOf(q, i + q.length, ignoreCase = !caseSensitive)
+                }
+                res
+            }
         }
     }
 
-    // Seleciona (destaca) a ocorrência de índice pos — o "seguir o cursor" rola até ela.
+    // Vai para a ocorrência [pos]: destaca no editor e, no modo visualização, seleciona/rola
+    // o bloco correspondente (funciona nos dois modos).
     val selectMatchAt = { pos: Int ->
         if (findMatches.isNotEmpty()) {
             val idx = ((pos % findMatches.size) + findMatches.size) % findMatches.size
             val start = findMatches[idx]
-            currentDoc.textState = currentDoc.textState.copy(selection = TextRange(start, start + findQuery.length))
+            val text = currentDoc.textState.text
+            currentDoc.textState = currentDoc.textState.copy(selection = TextRange(start, (start + findQuery.length).coerceAtMost(text.length)))
+            if (currentProject == null) {
+                val block = blockIndexForTextOffset(text, start)
+                searchBlockIndex = block
+                if (isPreviewMode) selectBlockOffset = blockPlus2Offset(text, block)
+            } else {
+                searchBlockIndex = -1
+            }
             matchPos = idx
         }
     }
@@ -1113,7 +1135,6 @@ fun MarkEditorApp(
                         IconButton(onClick = { openProjectFilesLauncher.launch(arrayOf("*/*")) }) { Icon(Icons.Default.LibraryBooks, stringResource(R.string.project_new_title), tint = gruvboxText) }
                         IconButton(onClick = {
                             showFindBar = !showFindBar
-                            if (showFindBar && !landscape) isPreviewMode = false
                         }) { Icon(Icons.Default.Search, stringResource(R.string.find_replace_title), tint = if (showFindBar) gruvboxOrange else gruvboxText) }
 
                         // No horizontal: alterna entre painel único e lado a lado.
@@ -1543,8 +1564,6 @@ fun MarkEditorApp(
                 var firstModeSwitch by remember { mutableStateOf(true) }
                 // Bloco "em foco" reportado pelo preview (selecionado > em leitura > topo).
                 var previewFocusBlock by remember { mutableIntStateOf(0) }
-                // Offset que pede ao preview para selecionar (borda azul) e rolar até o bloco.
-                var selectBlockOffset by remember { mutableStateOf<Int?>(null) }
                 LaunchedEffect(isPreviewMode) {
                     if (firstModeSwitch) { firstModeSwitch = false; return@LaunchedEffect }
                     if (currentProject != null) return@LaunchedEffect // projeto: textos diferentes
@@ -1597,6 +1616,9 @@ fun MarkEditorApp(
                                     selectBlockOffset = selectBlockOffset,
                                     onSelectConsumed = { selectBlockOffset = null },
                                     onActiveBlockChanged = { previewFocusBlock = it },
+                                    searchTerm = if (showFindBar && searchBlockIndex >= 0) findQuery else null,
+                                    searchBlockIndex = searchBlockIndex,
+                                    searchCaseSensitive = caseSensitive,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
@@ -1627,6 +1649,9 @@ fun MarkEditorApp(
                                     selectBlockOffset = selectBlockOffset,
                                     onSelectConsumed = { selectBlockOffset = null },
                                     onActiveBlockChanged = { previewFocusBlock = it },
+                                    searchTerm = if (showFindBar && searchBlockIndex >= 0) findQuery else null,
+                                    searchBlockIndex = searchBlockIndex,
+                                    searchCaseSensitive = caseSensitive,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -1785,7 +1810,7 @@ fun MarkEditorApp(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextField(
                                 value = findQuery,
-                                onValueChange = { findQuery = it; matchPos = -1 },
+                                onValueChange = { findQuery = it; matchPos = -1; searchBlockIndex = -1 },
                                 singleLine = true,
                                 placeholder = { Text(stringResource(R.string.find_hint), color = gruvboxGray) },
                                 textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
@@ -1799,7 +1824,7 @@ fun MarkEditorApp(
                                     modifier = Modifier.padding(horizontal = 6.dp)
                                 )
                             }
-                            IconButton(onClick = { caseSensitive = !caseSensitive; matchPos = -1 }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { caseSensitive = !caseSensitive; matchPos = -1; searchBlockIndex = -1 }, modifier = Modifier.size(36.dp)) {
                                 Text("Aa", color = if (caseSensitive) gruvboxOrange else gruvboxGray, fontWeight = FontWeight.Bold)
                             }
                             IconButton(
@@ -1810,7 +1835,7 @@ fun MarkEditorApp(
                                 onClick = { selectMatchAt(if (matchPos < 0) 0 else matchPos + 1) },
                                 enabled = findMatches.isNotEmpty(), modifier = Modifier.size(36.dp)
                             ) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.find_next), tint = if (findMatches.isNotEmpty()) gruvboxText else gruvboxGray) }
-                            IconButton(onClick = { showFindBar = false }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { showFindBar = false; searchBlockIndex = -1 }, modifier = Modifier.size(36.dp)) {
                                 Icon(Icons.Default.Close, stringResource(R.string.action_close), tint = gruvboxGray)
                             }
                         }
