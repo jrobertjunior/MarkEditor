@@ -147,6 +147,9 @@ class TtsManager private constructor(context: Context) {
     // Marca as interrupções que nós mesmos provocamos (pausar/pular/parar),
     // para não confundir com um erro real de síntese.
     private var manualInterrupt = false
+    // Voz de rede (online): o onRangeStart reporta a SÍNTESE, não a reprodução — o destaque
+    // por palavra dispara adiantado. Nesses casos desligamos o karaokê (só o bloco fica marcado).
+    private var networkVoice = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /** true enquanto o motor está de fato falando. */
@@ -305,6 +308,8 @@ class TtsManager private constructor(context: Context) {
             }
 
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                // Vozes online reportam a síntese (adiantada) — sem karaokê nesse caso.
+                if (networkVoice) return
                 mainHandler.post {
                     // Corrige o deslocamento se este bloco começou no meio (retomada).
                     val extra = if (currentIndex == firstUtteranceIndex) firstUtteranceOffset else 0
@@ -345,11 +350,9 @@ class TtsManager private constructor(context: Context) {
                 applyVoice(savedVoice)
                 applyVoiceFilter()
             } else {
-                selectedVoice = try {
-                    (engine.voice ?: engine.defaultVoice)?.name
-                } catch (e: Exception) {
-                    null
-                }
+                val current = try { engine.voice ?: engine.defaultVoice } catch (e: Exception) { null }
+                selectedVoice = current?.name
+                networkVoice = current?.isNetworkConnectionRequired ?: false
             }
         }
     }
@@ -451,6 +454,7 @@ class TtsManager private constructor(context: Context) {
         engine.voice = voice
         selectedVoice = name
         selectedLanguage = voice.locale.language
+        networkVoice = voice.isNetworkConnectionRequired
     }
 
     // ---- Controle de leitura ----------------------------------------------
